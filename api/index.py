@@ -164,7 +164,35 @@ def build_persona(persona_name: str, weights: dict = None) -> str:
     return persona
 
 
-def call_llm(system_prompt: str, user_message: str) -> str:
+MOCK_REPLIES = {
+    "motivate": "You've got this! Every step forward, no matter how small, builds momentum. The fact that you're here asking shows you're already committed to growth. Keep your eyes on the goal, break it down into daily actions, and celebrate each win along the way. I believe in you!",
+    "explain": "Great question! Let me break this down simply. Think of it like building blocks — each concept builds on the previous one. Start with the core idea, understand how the pieces connect, and before you know it, the bigger picture becomes clear. Would you like me to go deeper on any specific part?",
+    "advise": "Here's my take: take a step back and look at what's really important here. Focus on what you can control, set clear boundaries, and remember that progress matters more than perfection. I'd suggest starting with one small actionable step today. What does that look like for you?",
+}
+MOCK_GENERAL = [
+    "That's an interesting point. Here's what I think — every challenge carries a lesson, and every question opens a door. Keep exploring, keep asking, and trust the process.",
+    "I appreciate you sharing that. The best insights often come from honest conversations. Let's sit with that thought for a moment and see where it leads us.",
+    "Thanks for bringing that up. I'd say the key is to stay curious and keep an open mind. There's always more to discover, and you're on the right track by engaging with these ideas.",
+    "That's a great perspective. Remember that growth isn't always linear — some days feel like breakthroughs and others feel like setbacks, but it's all part of the journey.",
+]
+
+def generate_mock_reply(user_message: str, persona_name: str) -> str:
+    intent = detect_intent(user_message)
+    if intent and intent in MOCK_REPLIES:
+        base = MOCK_REPLIES[intent]
+    else:
+        import random
+        base = random.choice(MOCK_GENERAL)
+    if "coach" in persona_name:
+        base += " Now, what's your next step going to be?"
+    elif "teacher" in persona_name:
+        base += " Does that clarify things for you?"
+    else:
+        base += " How does that resonate with you?"
+    return base
+
+
+def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor") -> str:
     headers = {"Content-Type": "application/json"}
     if LLM_API_KEY:
         headers["Authorization"] = f"Bearer {LLM_API_KEY}"
@@ -183,10 +211,10 @@ def call_llm(system_prompt: str, user_message: str) -> str:
             return data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
     except Exception as e:
         err = str(e)[:80]
-        hint = ""
-        if "Connection refused" in err or "localhost" in err:
-            hint = " Set LLM_API_URL env var to a reachable API (e.g. Ollama, OpenAI)."
-        return FALLBACK + f" (Error: {err}.{hint})"
+        mock = generate_mock_reply(user_message, persona_name)
+        if "Connection refused" in err or "localhost" in err or "timed out" in err.lower() or "errno" in err.lower():
+            return mock + "\n\n*(Running in offline mode — no LLM API configured. Set LLM_API_URL for real AI replies.)*"
+        return mock + f"\n\n*(API error: {err}. Falling back to offline mode.)*"
 
 
 @app.post("/api/chat")
@@ -197,7 +225,7 @@ async def chat_endpoint(req: ChatRequest):
     prompt = apply_template(req.message, weights)
     persona = build_persona(req.persona, weights)
 
-    reply = call_llm(persona, prompt)
+    reply = call_llm(persona, prompt, req.persona)
     score = score_reply(reply)
     RECENT_SCORES.append(score)
     if len(RECENT_SCORES) > 20: RECENT_SCORES.pop(0)
@@ -239,19 +267,12 @@ async def dashboard_endpoint():
 
 @app.get("/api/health")
 async def health():
-    reachable = False
-    try:
-        req = urllib.request.Request(LLM_API_URL, method="HEAD")
-        with urllib.request.urlopen(req, timeout=3):
-            reachable = True
-    except Exception:
-        pass
     return {
         "status": "ok",
         "model": LLM_MODEL,
         "llm_url": LLM_API_URL,
-        "llm_reachable": reachable,
         "has_api_key": bool(LLM_API_KEY),
+        "mode": "offline" if "localhost" in LLM_API_URL and not LLM_API_KEY else "configured",
     }
 
 
