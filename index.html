@@ -2,145 +2,162 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>feelYou</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>youfeel</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}
-body{background:#1e1e2e;color:#cdd6f4;height:100vh;display:flex}
-.sidebar{width:280px;background:#181825;padding:16px;display:flex;flex-direction:column;gap:12px;border-right:1px solid #313244}
-.sidebar h2{font-size:16px;color:#89b4fa;margin-bottom:4px}
-.sidebar label{font-size:12px;color:#a6adc8}
-.sidebar select,.sidebar input[type=range]{width:100%;padding:6px;border-radius:6px;border:1px solid #45475a;background:#313244;color:#cdd6f4;font-size:13px}
-.sidebar input[type=range]{padding:0;height:6px;accent-color:#89b4fa}
-.weight-row{display:flex;align-items:center;gap:8px}
-.weight-row span{font-size:12px;min-width:60px}
-.weight-bar{flex:1;height:10px;background:#313244;border-radius:5px;overflow:hidden}
-.weight-fill{height:100%;border-radius:5px;transition:width .3s}
-.stat{font-size:12px;color:#a6adc8;padding:2px 0}
-.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;transition:opacity .2s}
-.btn:hover{opacity:.85}
-.main{flex:1;display:flex;flex-direction:column}
-.header{padding:16px 20px;border-bottom:1px solid #313244;display:flex;justify-content:space-between;align-items:center}
-.header h1{font-size:18px;color:#89b4fa}
-.msgs{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px}
-.msg{max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;animation:fadeIn .2s}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#1e1e2e;--surface:#181825;--surface2:#313244;--surface3:#45475a;--text:#cdd6f4;--text2:#a6adc8;--text3:#6c7086;--blue:#89b4fa;--green:#a6e3a1;--yellow:#f9e2af;--red:#f38ba8;--radius:12px;--radius-sm:8px}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.5;display:flex;flex-direction:column}
+.sidebar{background:var(--surface);border-bottom:1px solid var(--surface3);padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-shrink:0;z-index:10}
+.sidebar .brand{font-size:18px;font-weight:700;color:var(--blue);margin-right:8px;white-space:nowrap}
+.sidebar label{font-size:11px;color:var(--text2);display:none}
+.sidebar select{padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:13px;outline:none;cursor:pointer;max-width:120px}
+.sidebar .btn{padding:5px 12px;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s}
+.sidebar .btn:hover{opacity:.8}
+.toggle-controls{background:var(--surface2);color:var(--text);padding:5px 10px;border-radius:var(--radius-sm);border:none;font-size:11px;cursor:pointer;margin-left:auto;white-space:nowrap}
+.controls-panel{display:none;width:100%;padding:8px 0 4px;gap:8px}
+.controls-panel.open{display:flex;flex-direction:column}
+.controls-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.controls-row label{font-size:11px;color:var(--text2);min-width:50px}
+.weight-slider{display:flex;align-items:center;gap:6px;flex:1;min-width:120px}
+.weight-slider input[type=range]{flex:1;height:4px;accent-color:var(--blue);cursor:pointer;min-width:40px}
+.weight-slider .wval{font-size:11px;min-width:22px;color:var(--text2)}
+.wbar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;flex:1}
+.wfill{height:100%;border-radius:3px;transition:width .3s}
+.stat{font-size:11px;color:var(--text2);line-height:1.4}
+.stat b{color:var(--text)}
+.main{flex:1;display:flex;flex-direction:column;min-height:0}
+.msgs{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+.msg{max-width:88%;padding:10px 14px;border-radius:var(--radius);font-size:14px;line-height:1.5;animation:fadeIn .2s;word-wrap:break-word}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-.user{background:#89b4fa;color:#1e1e2e;align-self:flex-end;border-bottom-right-radius:4px}
-.assistant{background:#313244;color:#cdd6f4;align-self:flex-start;border-bottom-left-radius:4px}
-.msg .meta{font-size:11px;color:#6c7086;margin-top:4px;display:flex;gap:8px}
-.input-bar{display:flex;gap:8px;padding:12px 20px;border-top:1px solid #313244;background:#181825}
-.input-bar input{flex:1;padding:10px 14px;border-radius:8px;border:1px solid #45475a;background:#313244;color:#cdd6f4;font-size:14px;outline:none}
-.input-bar input:focus{border-color:#89b4fa}
-.listening{color:#f9e2af;font-size:12px;animation:pulse 1s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.user{background:var(--blue);color:var(--bg);align-self:flex-end;border-bottom-right-radius:4px}
+.assistant{background:var(--surface2);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px}
+.msg .meta{font-size:10px;color:var(--text3);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
+.input-bar{display:flex;gap:8px;padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--surface3);flex-shrink:0}
+.input-bar input{flex:1;padding:10px 14px;border-radius:var(--radius);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:15px;outline:none;min-width:0}
+.input-bar input:focus{border-color:var(--blue)}
+.input-bar .btn{padding:10px 18px;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .2s;white-space:nowrap}
+.input-bar .btn:hover{opacity:.85}
+.listening{color:var(--yellow);font-size:12px;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 #heatmap{display:grid;gap:2px;margin-top:4px}
-.heat-cell{padding:4px;text-align:center;font-size:11px;border-radius:4px}
+.heat-cell{padding:3px;text-align:center;font-size:10px;border-radius:3px}
+@media(min-width:768px){
+  body{flex-direction:row}
+  .sidebar{width:280px;flex-direction:column;align-items:stretch;border-bottom:none;border-right:1px solid var(--surface3);padding:16px;overflow-y:auto;flex-shrink:0}
+  .sidebar .brand{font-size:20px;margin-bottom:8px}
+  .sidebar label{display:block;margin-top:8px}
+  .sidebar select{max-width:100%;padding:6px 10px;font-size:13px}
+  .sidebar .btn{padding:8px 16px;font-size:13px}
+  .toggle-controls{display:none}
+  .controls-panel{display:flex !important;flex-direction:column;gap:10px;padding:8px 0}
+  .controls-row{flex-direction:column;gap:4px}
+  .weight-slider{width:100%}
+  .msgs{padding:16px 20px}
+  .msg{max-width:75%;font-size:15px}
+  .input-bar{padding:12px 20px}
+  .input-bar input{font-size:14px}
+}
+@media(min-width:1024px){
+  .sidebar{width:320px}
+  .msg{max-width:70%}
+}
 </style>
 </head>
 <body>
-<div class="sidebar">
-  <h2>feelYou</h2>
-  <label>Persona</label>
+<div class="sidebar" id="sidebar">
+  <span class="brand">youfeel</span>
   <select id="persona"><option value="mentor">Mentor</option><option value="coach">Coach</option><option value="teacher">Teacher</option><option value="mentor:50+coach:30+teacher:20">Blended</option></select>
-  <label>Voice</label>
-  <button class="btn" id="voiceBtn" style="background:#45475a;color:#cdd6f4">Start Voice</button>
-  <div id="voiceStatus" class="stat">Idle</div>
-  <hr style="border-color:#313244">
-  <label>Weights</label>
-  <div id="weights"></div>
-  <hr style="border-color:#313244">
-  <label>Stats</label>
-  <div id="stats" class="stat">Loading...</div>
-  <hr style="border-color:#313244">
-  <label>Heatmap</label>
-  <div id="heatmap"></div>
+  <button class="btn" id="voiceBtn" style="background:var(--surface3);color:var(--text)">🎤 Voice</button>
+  <span id="voiceStatus" class="stat" style="font-size:11px">Idle</span>
+  <button class="toggle-controls" id="toggleCtrl">▼ Controls</button>
+  <div class="controls-panel" id="controlsPanel">
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Weights</label><div id="weights"></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap</label><div id="heatmap"></div></div>
+  </div>
 </div>
 <div class="main">
-  <div class="header"><h1>feelYou</h1><span id="modelBadge" style="font-size:12px;color:#6c7086">llama3.2</span></div>
   <div class="msgs" id="msgs"></div>
   <div class="input-bar">
-    <input id="input" placeholder="Type a message..." autofocus>
-    <button class="btn" id="sendBtn" style="background:#89b4fa;color:#1e1e2e">Send</button>
+    <input id="input" placeholder="Message..." autofocus>
+    <button class="btn" id="sendBtn" style="background:var(--blue);color:var(--bg)">Send</button>
   </div>
 </div>
 <script>
-const API = '/api';
-let persona = 'mentor', weights = {}, conv = [], listening = false, recognition = null, voiceBtn = document.getElementById('voiceBtn'), voiceStatus = document.getElementById('voiceStatus'), input = document.getElementById('input'), msgs = document.getElementById('msgs'), sendBtn = document.getElementById('sendBtn'), personaSel = document.getElementById('persona'), weightsEl = document.getElementById('weights'), statsEl = document.getElementById('stats'), heatmapEl = document.getElementById('heatmap'), modelBadge = document.getElementById('modelBadge');
+const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null;
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
+const i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel');
 
-function addMsg(role, text, meta) {
-  const d = document.createElement('div');
-  d.className = 'msg ' + role;
-  d.innerHTML = text.replace(/\n/g, '<br>');
-  if (meta) { const m = document.createElement('div'); m.className = 'meta'; m.textContent = meta; d.appendChild(m); }
-  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
+
+function add(r,t,meta){
+  const d=document.createElement('div');d.className='msg '+r;
+  d.innerHTML=t.replace(/\n/g,'<br>');
+  if(meta){const m2=document.createElement('div');m2.className='meta';m2.textContent=meta;d.appendChild(m2)}
+  m.appendChild(d);m.scrollTop=m.scrollHeight
 }
 
-async function chat(msg) {
-  addMsg('user', msg);
-  input.disabled = true; sendBtn.disabled = true;
-  try {
-    const res = await fetch(API + '/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:msg,persona:persona,weights:weights,conversation:conv}) });
-    const data = await res.json();
-    addMsg('assistant', data.reply, score: );
-    weights = data.weights || weights;
-    updateWeights();
-    if (data.escalation_tier) playCue(data.escalation_tier, data.intent);
-  } catch(e) { addMsg('assistant', 'Error: ' + e.message); }
-  input.disabled = false; sendBtn.disabled = false; input.focus();
+async function chat(msg){
+  add('user',msg);i.disabled=1;s.disabled=1;
+  try{
+    const r2=await fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,persona:persona,weights:weights,conversation:conv})});
+    const d=await r2.json();
+    add('assistant',d.reply,`score: ${d.score}${d.intent?' \u2022 intent: '+d.intent:''}${d.escalation_tier?' \u2022 tier '+d.escalation_tier:''}`);
+    weights=d.weights||weights;updateW();
+    if(d.escalation_tier)cue(d.escalation_tier,d.intent)
+  }catch(e){add('assistant','Error: '+e.message)}
+  i.disabled=0;s.disabled=0;i.focus()
 }
 
-function updateWeights() {
-  weightsEl.innerHTML = '';
-  const names = Object.keys(weights).length ? Object.keys(weights) : ['mentor','coach','teacher'];
-  const vals = Object.keys(weights).length ? Object.values(weights) : [50,0,0];
-  names.forEach((n,i) => {
-    const v = vals[i] || 0;
-    const colors = {mentor:'#89b4fa',coach:'#a6e3a1',teacher:'#f9e2af'};
-    const c = colors[n] || '#89b4fa';
-    const row = document.createElement('div'); row.className = 'weight-row';
-    row.innerHTML = '<span>'+n+'</span><div class="weight-bar"><div class="weight-fill" style="width:'+v+'%;background:'+c+'"></div></div><span style="font-size:11px;min-width:30px">'+v+'</span>';
-    weightsEl.appendChild(row);
-  });
+function updateW(){
+  w.innerHTML='';const names=Object.keys(weights).length?Object.keys(weights):['mentor','coach','teacher'];
+  const vals=Object.keys(weights).length?Object.values(weights):[50,0,0];
+  const cs={mentor:'#89b4fa',coach:'#a6e3a1',teacher:'#f9e2af'};
+  names.forEach((n,j)=>{
+    const v=vals[j]||0,c=cs[n]||'#89b4fa';
+    const r2=document.createElement('div');r2.style.cssText='display:flex;align-items:center;gap:6px;margin:2px 0';
+    r2.innerHTML='<span style="font-size:11px;min-width:52px;color:var(--text2)">'+n+'</span><div class="wbar"><div class="wfill" style="width:'+v+'%;background:'+c+'"></div></div><span style="font-size:10px;min-width:26px;color:var(--text2)">'+v+'</span>';
+    w.appendChild(r2)
+  })
 }
 
-async function refreshStats() {
-  try {
-    const res = await fetch(API + '/dashboard');
-    const d = await res.json();
-    statsEl.innerHTML = 'Avg confidence: ' + (d.avg_confidence || 'N/A') + '<br>Scores: [' + d.recent_scores.slice(-5).join(',') + ']';
-  } catch(e) { statsEl.textContent = 'Offline'; }
+async function refreshStats(){
+  try{const r2=await fetch(API+'/dashboard');const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> &middot; Recent: ['+d.recent_scores.slice(-5).join(',')+']'}
+  catch(e){st.textContent='Offline'}
 }
 
-function playCue(tier, intent) {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator(); const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    const freqs = intent === 'motivate' ? [523,659,784] : intent === 'explain' ? [440,440,440] : intent === 'advise' ? [784,659,523] : [400,500,700];
-    osc.frequency.setValueAtTime(freqs[Math.min(tier-1,freqs.length-1)], ctx.currentTime);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
-  } catch(e) {}
+function cue(tier,intent){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    const fs=intent==='motivate'?[523,659,784]:intent==='explain'?[440,440,440]:intent==='advise'?[784,659,523]:[400,500,700];
+    osc.frequency.setValueAtTime(fs[Math.min(tier-1,fs.length-1)],ctx.currentTime);
+    gain.gain.setValueAtTime(0.25,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.2);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.2)
+  }catch(e){}
 }
 
-personaSel.addEventListener('change', () => { persona = personaSel.value; });
-sendBtn.addEventListener('click', () => { const m = input.value.trim(); if(m) { input.value = ''; chat(m); } });
-input.addEventListener('keydown', (e) => { if(e.key === 'Enter') sendBtn.click(); });
+p.onchange=()=>{persona=p.value};
+s.onclick=()=>{const t=i.value.trim();if(t){i.value='';chat(t)}};
+i.onkeydown=e=>{if(e.key==='Enter')s.click()};
 
-document.getElementById('voiceBtn').addEventListener('click', () => {
-  if (listening) { if(recognition) recognition.stop(); return; }
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) { voiceStatus.textContent = 'Voice not supported'; return; }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR(); recognition.lang = 'en-US'; recognition.interimResults = false; recognition.continuous = false;
-  recognition.onstart = () => { listening = true; voiceBtn.textContent = 'Stop Voice'; voiceBtn.style.background = '#f38ba8'; voiceStatus.textContent = 'Listening...'; voiceStatus.className = 'stat listening'; };
-  recognition.onend = () => { listening = false; voiceBtn.textContent = 'Start Voice'; voiceBtn.style.background = '#45475a'; voiceStatus.textContent = 'Idle'; voiceStatus.className = 'stat'; };
-  recognition.onresult = (e) => { const text = e.results[0][0].transcript; voiceStatus.textContent = 'Heard: ' + text; chat(text); };
-  recognition.onerror = (e) => { voiceStatus.textContent = 'Error: ' + e.error; listening = false; voiceBtn.textContent = 'Start Voice'; voiceBtn.style.background = '#45475a'; };
-  recognition.start();
-});
+vb.onclick=()=>{
+  if(listening){R&&R.stop();return}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){vs.textContent='Voice not supported';return}
+  R=new SR();R.lang='en-US';R.interimResults=0;R.continuous=0;
+  R.onstart=()=>{listening=1;vb.textContent='\u23F9 Stop';vb.style.background='var(--red)';vs.textContent='Listening...';vs.className='listening'};
+  R.onend=()=>{listening=0;vb.textContent='\uD83C\uDFA4 Voice';vb.style.background='var(--surface3)';vs.textContent='Idle';vs.className='stat'};
+  R.onresult=e=>{const t=e.results[0][0].transcript;vs.textContent='Heard: '+t;chat(t)};
+  R.onerror=e=>{vs.textContent='Error: '+e.error;listening=0;vb.textContent='\uD83C\uDFA4 Voice';vb.style.background='var(--surface3)'};
+  R.start()
+};
 
-refreshStats(); updateWeights(); setInterval(refreshStats, 10000);
-addMsg('assistant', 'Hello! I\'m feelYou. How can I help you today?');
+refreshStats();updateW();setInterval(refreshStats,10000);
+add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?')
 </script>
 </body>
 </html>
