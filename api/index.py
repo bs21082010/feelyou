@@ -9,7 +9,11 @@ from collections import Counter, defaultdict
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI()
 
@@ -232,3 +236,14 @@ async def dashboard_endpoint():
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "model": LLM_MODEL, "llm_url": LLM_API_URL}
+
+
+@app.get("/{path:path}")
+async def serve_frontend(path: str):
+    if path.startswith("api/"):
+        raise HTTPException(404)
+    idx = os.path.join(HERE, "index.html")
+    if os.path.exists(idx):
+        with open(idx, encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>youfeel</h1><p>Frontend not found.</p>")
