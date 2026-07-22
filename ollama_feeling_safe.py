@@ -7,8 +7,14 @@ import hashlib
 import urllib.request
 import urllib.parse
 import re
+import winsound
 from datetime import datetime, timedelta
 from collections import Counter, defaultdict
+import speech_recognition as sr
+import pyttsx3
+import threading
+import queue
+import time
 
 MODEL_VERSION = "llama3.2"
 DATASET_PATH = "curated_dataset.jsonl"
@@ -17,6 +23,7 @@ CACHE_PATH = "knowledge_cache.jsonl"
 CONFLICT_PATH = "conflict_queue.jsonl"
 ESCALATION_LOG_PATH = "escalation_log.jsonl"
 WEIGHT_LOG_PATH = "weight_history.jsonl"
+CONFLICT_LOG_PATH = "conflict_resolution_log.jsonl"
 GOLD_DIR = "gold"
 SNAPSHOT_DIR = "snapshots"
 SYNC_DIR = None
@@ -27,6 +34,7 @@ DRIFT_THRESHOLD = 15
 PREDICTIVE_BOOST = 8
 CONFLICT_AUTO_POLICY = "low"
 STALE_WARNING_DAYS = 1
+AUTO_REFRESH_ENABLED = False
 LAST_REPLY = None
 LAST_PROMPT = None
 LAST_SCORE = None
@@ -36,6 +44,18 @@ DYNAMIC_WEIGHTS = {}
 PERSONA_SPEC = "mentor"
 CACHE_HITS = 0
 CACHE_MISSES = 0
+AUTO_RESOLVED_COUNT = 0
+MANUAL_RESOLVED_COUNT = 0
+
+VOICE_ENABLED = False
+VOICE_RECOGNIZER = None
+VOICE_ENGINE = None
+VOICE_SPEECH_QUEUE = queue.Queue()
+VOICE_PERSONA_VOICES = {
+    "mentor": {"rate": 160, "volume": 0.9, "voice_name": "zira"},
+    "coach": {"rate": 180, "volume": 0.85, "voice_name": "david"},
+    "teacher": {"rate": 150, "volume": 0.9, "voice_name": "zira"},
+}
 
 EXTERNAL_ENABLED = False
 EXTERNAL_SOURCES = {
@@ -76,8 +96,7 @@ BASELINE_WEIGHTS = {}
 
 
 def load_dataset(path=DATASET_PATH):
-    if not os.path.exists(path):
-        return []
+    if not os.path.exists(path): return []
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 
@@ -113,6 +132,12 @@ def log_weights(weights):
         f.write(json.dumps(entry) + "\n")
 
 
+def log_conflict_resolution(method, prompt):
+    entry = {"method": method, "prompt": prompt[:80], "timestamp": datetime.now().isoformat()}
+    with open(CONFLICT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
 def query_hash(query):
     return hashlib.sha256(query.strip().lower().encode()).hexdigest()[:16]
 
@@ -132,8 +157,7 @@ def time_until_stale(source, cached_at_str):
         return 0
     decay = FRESHNESS_DECAY.get(source, 5)
     current = max(0, 100 - age_days * decay)
-    if current <= FRESHNESS_STALE_AT:
-        return 0
+    if current <= FRESHNESS_STALE_AT: return 0
     return (current - FRESHNESS_STALE_AT) / decay
 
 
@@ -150,10 +174,8 @@ def cache_lookup(query):
             entry = json.loads(line)
             fs = freshness_score(entry.get("source", "duckduckgo"), entry.get("cached_at", ""))
             entry["_freshness"] = fs
-            if fs < FRESHNESS_STALE_AT:
-                stale.append(entry)
-            else:
-                fresh.append(entry)
+            if fs < FRESHNESS_STALE_AT: stale.append(entry)
+            else: fresh.append(entry)
     if stale:
         with open(CACHE_PATH, "w", encoding="utf-8") as f:
             for entry in fresh:
@@ -161,10 +183,8 @@ def cache_lookup(query):
                 f.write(json.dumps(e) + "\n")
     for entry in fresh:
         if entry.get("query_hash") == qh:
-            CACHE_HITS += 1
-            return entry["results"]
-    CACHE_MISSES += 1
-    return None
+            CACHE_HITS += 1; return entry["results"]
+    CACHE_MISSES += 1; return None
 
 
 def cache_store(query, results):
@@ -174,24 +194,54 @@ def cache_store(query, results):
             f.write(json.dumps(entry) + "\n")
 
 
-def forecast_cache_staleness():
-    if not os.path.exists(CACHE_PATH):
-        return
+def auto_refresh_cache():
+    if not AUTO_REFRESH_ENABLED or not os.path.exists(CACHE_PATH):
+        return 0
     with open(CACHE_PATH, encoding="utf-8") as f:
         entries = [json.loads(line) for line in f if line.strip()]
-    if not entries:
-        return
-    warning = []
+    refreshed = 0
+    kept = []
+    for e in entries:
+        src = e.get("source", "duckduckgo")
+        days_left = time_until_stale(src, e.get("cached_at", ""))
+        if 0 < days_left <= STALE_WARNING_DAYS and EXTERNAL_ENABLED:
+            q = e.get("query", "")
+            if q:
+                results = [fetch_source(src, q)]
+                results = [r for r in results if r]
+                if results:
+                    cache_store(q, results)
+                    refreshed += 1
+                kept.append(e)
+            else:
+                kept.append(e)
+        else:
+            kept.append(e)
+    if refreshed:
+        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+            for e in kept:
+                entry = {k: v for k, v in e.items() if not k.startswith("_")}
+                f.write(json.dumps(entry) + "\n")
+        print(f"   Auto-refreshed {refreshed} cache entr(ies).")
+    return refreshed
+
+
+def forecast_cache_staleness():
+    if not os.path.exists(CACHE_PATH): return
+    with open(CACHE_PATH, encoding="utf-8") as f:
+        entries = [json.loads(line) for line in f if line.strip()]
+    if not entries: return
+    warnings = []
     for e in entries:
         src = e.get("source", "duckduckgo")
         days_left = time_until_stale(src, e.get("cached_at", ""))
         if 0 < days_left <= STALE_WARNING_DAYS:
-            warning.append((src, e.get("query", "")[:60], days_left))
-    if warning:
-        print(f"   Cache forecast ({len(warning)} entries nearing staleness):")
-        for src, q, d in warning:
+            warnings.append((src, e.get("query", "")[:60], days_left))
+    if warnings:
+        print(f"   Stale forecast ({len(warnings)} entries nearing staleness):")
+        for src, q, d in warnings:
             print(f"      {src}: \"{q}\"... stale in {d:.1f}d")
-        print("   Run a relevant query to auto-refresh these entries.")
+        print("   Run a relevant query or enable AUTO_REFRESH_ENABLED.")
 
 
 def generate_variations(prompt, corrected):
@@ -222,8 +272,7 @@ def topic_distribution(data):
     for p in [d["prompt"] for d in data]:
         matched = False
         for key in PROMPT_TEMPLATES:
-            if p.lower().startswith(key):
-                topics[key] += 1; matched = True; break
+            if p.lower().startswith(key): topics[key] += 1; matched = True; break
         if not matched: topics["general"] += 1
     return topics
 
@@ -245,32 +294,73 @@ def detect_intent(text):
     return None
 
 
-def predictive_intent_boost(intent):
-    if not os.path.exists(ESCALATION_LOG_PATH):
-        return {}
+def forecast_persona():
+    if not os.path.exists(ESCALATION_LOG_PATH): return None
     with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
         events = [json.loads(line) for line in f if line.strip()]
-    if not events:
-        return {}
+    if not events: return None
+    recent = events[-10:]
+    intent_counts = Counter()
+    for e in recent:
+        text = e.get("user_input", ""); i = detect_intent(text)
+        if i: intent_counts[i] += 1
+    if not intent_counts: return None
+    most_likely = intent_counts.most_common(1)[0][0]
+    forecast = {"motivate": "coach:60+mentor:40", "explain": "teacher:60+coach:40", "advise": "mentor:50+coach:50"}
+    result = forecast.get(most_likely)
+    if result:
+        print(f"   Forecast: next turn likely \"{most_likely}\" -> blend: {result}")
+    return result
+
+
+def predictive_intent_boost(intent):
+    if not os.path.exists(ESCALATION_LOG_PATH): return {}
+    with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
+        events = [json.loads(line) for line in f if line.strip()]
+    if not events: return {}
     by_intent = Counter()
     for e in events:
-        text = e.get("user_input", "")
-        i = detect_intent(text) or "general"
+        text = e.get("user_input", ""); i = detect_intent(text) or "general"
         by_intent[i] += 1
     total = sum(by_intent.values())
-    if total == 0:
-        return {}
+    if total == 0: return {}
     rate = by_intent.get(intent, 0) / total
     boost_map = {}
     if rate > 0.3 and intent == "motivate":
-        boost_map["coach"] = PREDICTIVE_BOOST
-        boost_map["mentor"] = PREDICTIVE_BOOST
+        boost_map["coach"] = PREDICTIVE_BOOST; boost_map["mentor"] = PREDICTIVE_BOOST
     elif rate > 0.3 and intent == "explain":
         boost_map["teacher"] = PREDICTIVE_BOOST
     elif rate > 0.3 and intent == "advise":
-        boost_map["mentor"] = PREDICTIVE_BOOST
-        boost_map["coach"] = int(PREDICTIVE_BOOST * 0.7)
+        boost_map["mentor"] = PREDICTIVE_BOOST; boost_map["coach"] = int(PREDICTIVE_BOOST * 0.7)
     return boost_map
+
+
+def reinforce_hotspots():
+    if not os.path.exists(ESCALATION_LOG_PATH): return 0
+    with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
+        events = [json.loads(line) for line in f if line.strip()]
+    if not events: return 0
+    heat = Counter()
+    for e in events:
+        text = e.get("user_input", ""); i = detect_intent(text) or "general"
+        heat[i] += 1
+    riskiest = heat.most_common(1)
+    if not riskiest: return 0
+    intent = riskiest[0][0]
+    count = riskiest[0][1]
+    if count < 2: return 0
+    reinforcement = {
+        "motivate": "Motivate me to start a new habit. Respond with warmth and actionable steps.",
+        "explain": "Explain how to stay consistent with daily goals. Be clear and structured.",
+        "advise": "What should I do when I feel overwhelmed? Offer supportive advice.",
+    }
+    template = reinforcement.get(intent)
+    if not template: return 0
+    example_prompt = f"[auto-reinforcement] {template}"
+    example_completion = f"This is an auto-generated reinforcement example for high-risk intent \"{intent}\" ({count} escalation events). Replace this with a high-quality curated response."
+    append_to_dataset(example_prompt, example_completion)
+    print(f"   Reinforced hotspot: added few-shot example for \"{intent}\" ({count} escalations).")
+    return 1
 
 
 def normalize_weights(w):
@@ -292,10 +382,8 @@ def orchestrate_persona(spec, overrides=None):
     for part in parts:
         part = part.strip()
         if ":" in part:
-            name, ws = part.rsplit(":", 1)
-            weight = int(ws) if ws.isdigit() else 50
-        else:
-            name = part; weight = 50
+            name, ws = part.rsplit(":", 1); weight = int(ws) if ws.isdigit() else 50
+        else: name = part; weight = 50
         base = PERSONAS.get(name.strip())
         if overrides and name.strip() in overrides: weight = overrides[name.strip()]
         if base: segs.append((base.strip(), weight))
@@ -310,10 +398,8 @@ def orchestrate_persona(spec, overrides=None):
 
 
 def build_persona(data=None, persona_name="mentor", overrides=None):
-    if "+" in persona_name:
-        persona = orchestrate_persona(persona_name, overrides)
-    else:
-        persona = PERSONAS.get(persona_name, PERSONAS["mentor"])
+    if "+" in persona_name: persona = orchestrate_persona(persona_name, overrides)
+    else: persona = PERSONAS.get(persona_name, PERSONAS["mentor"])
     avg_c = (sum(RECENT_SCORES) / len(RECENT_SCORES)) if RECENT_SCORES else 100
     if avg_c < 50: persona += "\nBe cautious and acknowledge uncertainty clearly."
     elif avg_c < 70: persona += "\nBalance confidence with openness to correction."
@@ -338,14 +424,12 @@ def topic_balance(data):
 
 
 def show_cache_stats():
-    if not os.path.exists(CACHE_PATH):
-        print("   Cache: empty"); return
+    if not os.path.exists(CACHE_PATH): print("   Cache: empty"); return
     with open(CACHE_PATH, encoding="utf-8") as f:
         entries = [json.loads(line) for line in f if line.strip()]
     if not entries: print("   Cache: empty"); return
     fs_by_src = defaultdict(list)
-    for e in entries:
-        fs_by_src[e.get("source", "unknown")].append(freshness_score(e.get("source", ""), e.get("cached_at", "")))
+    for e in entries: fs_by_src[e.get("source", "unknown")].append(freshness_score(e.get("source", ""), e.get("cached_at", "")))
     tq = CACHE_HITS + CACHE_MISSES; hr = (CACHE_HITS / tq * 100) if tq else 0
     print(f"   Cache: {len(entries)} entries | hits: {CACHE_HITS} | misses: {CACHE_MISSES} | hit rate: {hr:.0f}%")
     for src, scores in fs_by_src.items():
@@ -353,6 +437,8 @@ def show_cache_stats():
         bar = chr(9608) * int(avg / 10) + chr(9617) * (10 - int(avg / 10))
         print(f"      {src}: {avg:.0f}/100 {bar}")
     forecast_cache_staleness()
+    refreshed = auto_refresh_cache()
+    if refreshed: print(f"   Auto-refreshed {refreshed} stale entr(ies).")
 
 
 def show_weight_trends():
@@ -390,49 +476,57 @@ def show_escalation_dashboard():
 
 
 def show_escalation_heatmap():
-    if not os.path.exists(ESCALATION_LOG_PATH): print("   No escalation data."); return
+    if not os.path.exists(ESCALATION_LOG_PATH): print("   No data."); return
     with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
         events = [json.loads(line) for line in f if line.strip()]
     if not events: return
     heat = defaultdict(lambda: Counter())
     for e in events:
-        text = e.get("user_input", "")
-        intent = detect_intent(text) or "general"
-        tier = e.get("tier", "?")
-        heat[intent][tier] += 1
-    print("   Escalation heatmap (intent vs tier):")
+        text = e.get("user_input", ""); intent = detect_intent(text) or "general"
+        heat[intent][e.get("tier", "?")] += 1
+    print("   Heatmap (intent vs tier):")
     tiers = sorted({e.get("tier") for e in events})
-    header = "   " + "".join(f"  T{t}" for t in tiers)
-    print(header)
+    print("   " + "".join(f" T{t} " for t in tiers))
     for intent in sorted(heat):
         row = f"   {intent:10s}"
         for t in tiers:
             c = heat[intent].get(t, 0)
-            marker = chr(9608) if c >= 3 else chr(9618) if c >= 1 else " "
-            row += f"   {marker} {c}"
+            row += f" {chr(9608) if c >= 3 else chr(9618) if c >= 1 else ' '} {c} "
         max_c = max(heat[intent].values()) if heat[intent] else 0
-        bar = chr(9608) * min(max_c, 10)
-        print(f"{row}  {bar}")
-    risk_intents = sorted(heat, key=lambda i: sum(heat[i].values()), reverse=True)
-    if risk_intents:
-        print(f"   Hotspot: \"{risk_intents[0]}\" ({sum(heat[risk_intents[0]].values())} events)")
+        print(f"{row} {chr(9608) * min(max_c, 10)}")
+    risk = sorted(heat, key=lambda i: sum(heat[i].values()), reverse=True)
+    if risk: print(f"   Hotspot: \"{risk[0]}\" ({sum(heat[risk[0]].values())} events)")
 
 
 def show_predictive_analytics():
-    if not os.path.exists(ESCALATION_LOG_PATH): print("   No escalation data."); return
+    if not os.path.exists(ESCALATION_LOG_PATH): print("   No data."); return
     with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
         events = [json.loads(line) for line in f if line.strip()]
     if not events: return
-    weak_topics = Counter()
+    weak = Counter()
     for e in events:
-        text = e.get("user_input", ""); intent = detect_intent(text) or "general"
-        weak_topics[intent] += 1
-    print("   Predictive analytics (high-risk topics):")
-    for topic, count in weak_topics.most_common():
+        text = e.get("user_input", ""); i = detect_intent(text) or "general"
+        weak[i] += 1
+    print("   Predictive analytics (high-risk):")
+    for topic, count in weak.most_common():
         bar = chr(9608) * count + chr(9617) * (10 - count)
-        print(f"      {topic}: {count} escalation(s) {bar}")
-    riskiest = weak_topics.most_common(1)
-    if riskiest: print(f"   ! Recommend pre-training on \"{riskiest[0][0]}\" examples.")
+        print(f"      {topic}: {count} {bar}")
+    if weak: print(f"   ! Pre-train on \"{weak.most_common(1)[0][0]}\" examples.")
+
+
+def show_conflict_analytics():
+    if not os.path.exists(CONFLICT_LOG_PATH):
+        print("   No conflict resolution history."); return
+    with open(CONFLICT_LOG_PATH, encoding="utf-8") as f:
+        entries = [json.loads(line) for line in f if line.strip()]
+    methods = Counter(e.get("method") for e in entries)
+    total = len(entries)
+    auto = methods.get("auto", 0)
+    manual = methods.get("manual", 0)
+    gui = methods.get("gui", 0)
+    voice = methods.get("voice", 0)
+    print(f"   Conflict resolutions ({total}): auto: {auto} ({auto/total*100:.0f}%) | manual: {manual} ({manual/total*100:.0f}%) | gui: {gui} ({gui/total*100:.0f}%) | voice: {voice} ({voice/total*100:.0f}%)")
+    print(f"   Live counters: auto={AUTO_RESOLVED_COUNT} manual={MANUAL_RESOLVED_COUNT}")
 
 
 def detect_drift():
@@ -448,11 +542,11 @@ def detect_drift():
         if drift > DRIFT_THRESHOLD:
             d = "above" if cur > bl else "below"
             print(f"      !! {name}: drifted {drift:.0f} pts {d} baseline ({bl} -> {cur})")
-        else:
-            print(f"      OK {name}: stable ({bl} -> {cur}, drift {drift:.0f})")
+        else: print(f"      OK {name}: stable ({bl} -> {cur}, drift {drift:.0f})")
 
 
 def auto_resolve_conflicts():
+    global AUTO_RESOLVED_COUNT
     cutoff = {"low": 50, "medium": 70, "all": 100}.get(CONFLICT_AUTO_POLICY, 50)
     if not os.path.exists(CONFLICT_PATH): return 0
     with open(CONFLICT_PATH, encoding="utf-8") as f:
@@ -464,25 +558,17 @@ def auto_resolve_conflicts():
         if pri < cutoff:
             ca, cb = e["completions"][0], e["completions"][1]
             sa, sb = ca.get("score", 0), cb.get("score", 0)
-            if abs(sa - sb) >= 20:
-                best = ca if sa > sb else cb
-                append_to_dataset(e["prompt"], best["completion"])
-                resolved += 1
-            elif sa >= 70 and sb >= 70:
-                combined = ca["completion"] + "\n\n" + cb["completion"]
-                append_to_dataset(e["prompt"], combined)
-                resolved += 1
-            else:
-                best = ca if sa >= sb else cb
-                append_to_dataset(e["prompt"], best["completion"])
-                resolved += 1
-        else:
-            kept.append(e)
+            if abs(sa - sb) >= 20: best = ca if sa > sb else cb
+            elif sa >= 70 and sb >= 70: best = {"completion": ca["completion"] + "\n\n" + cb["completion"]}
+            else: best = ca if sa >= sb else cb
+            append_to_dataset(e["prompt"], best["completion"])
+            log_conflict_resolution("auto", e["prompt"])
+            AUTO_RESOLVED_COUNT += 1; resolved += 1
+        else: kept.append(e)
     if kept:
         with open(CONFLICT_PATH, "w", encoding="utf-8") as f:
             for e in kept: f.write(json.dumps(e) + "\n")
-    elif os.path.exists(CONFLICT_PATH):
-        os.remove(CONFLICT_PATH)
+    elif os.path.exists(CONFLICT_PATH): os.remove(CONFLICT_PATH)
     return resolved
 
 
@@ -491,8 +577,7 @@ def show_dashboard():
     print("  EMOTIONAL OLLAMA DASHBOARD")
     print("=" * 58)
     data = load_dataset()
-    if data:
-        print(f"\nDataset: {len(data)} entries"); topic_balance(data)
+    if data: print(f"\nDataset: {len(data)} entries"); topic_balance(data)
     else: print("\nDataset: empty")
     print(); show_cache_stats(); print()
     hist = show_weight_trends(); print()
@@ -500,20 +585,24 @@ def show_dashboard():
     show_escalation_dashboard(); print()
     show_escalation_heatmap(); print()
     show_predictive_analytics(); print()
+    show_conflict_analytics(); print()
+    print("   Persona forecast:"); forecast_persona(); print()
     resolved = auto_resolve_conflicts()
     if resolved: print(f"   Auto-resolved {resolved} conflict(s) (policy: {CONFLICT_AUTO_POLICY}).")
+    r = reinforce_hotspots()
+    if r: print(f"   Added reinforcement example.")
     show_conflicts()
     print("=" * 58)
 
 
-def dataset_stats(path=DATASET_PATH):
-    data = load_dataset(path)
+def dataset_stats():
+    data = load_dataset()
     if not data: print("Dataset is empty."); return
     topic_balance(data)
     print(f"Dataset: {len(data)} entries | Model: {MODEL_VERSION}")
     avg_c = (sum(RECENT_SCORES) / len(RECENT_SCORES)) if RECENT_SCORES else None
-    if avg_c is not None: print(f"   Recent avg confidence: {avg_c:.0f}/100 | Consecutive low: {CONSECUTIVE_LOW}")
-    show_cache_stats(); show_weight_trends(); show_escalation_dashboard(); show_escalation_heatmap(); show_predictive_analytics(); detect_drift()
+    if avg_c is not None: print(f"   Avg confidence: {avg_c:.0f}/100 | Consecutive low: {CONSECUTIVE_LOW}")
+    show_cache_stats(); show_weight_trends(); show_escalation_dashboard(); show_escalation_heatmap(); show_predictive_analytics(); show_conflict_analytics(); detect_drift()
 
 
 def show_conflicts():
@@ -529,13 +618,18 @@ def show_conflicts():
     print("   resolve <i> <text> | resolve-skip <i>")
 
 
-def resolve_conflict(idx, correction, path=CONFLICT_PATH):
+def resolve_conflict(idx, correction, path=CONFLICT_PATH, method="manual"):
+    global MANUAL_RESOLVED_COUNT
     if not os.path.exists(path): print("No conflict queue."); return
     with open(path, encoding="utf-8") as f:
         entries = [json.loads(line) for line in f if line.strip()]
     if idx < 0 or idx >= len(entries): print(f"Invalid index {idx}."); return
     prompt = entries[idx]["prompt"]; append_to_dataset(prompt, correction)
-    print(f"Conflict [{idx}] resolved."); entries.pop(idx)
+    log_conflict_resolution(method, prompt)
+    if method == "gui": pass
+    elif method == "voice": pass
+    else: MANUAL_RESOLVED_COUNT += 1
+    print(f"Conflict [{idx}] resolved via {method}."); entries.pop(idx)
     with open(path, "w", encoding="utf-8") as f:
         for e in entries: f.write(json.dumps(e) + "\n")
     if correction: generate_variations(prompt, correction)
@@ -554,7 +648,7 @@ def skip_conflict(idx, path=CONFLICT_PATH):
 
 def validate_dataset(path=DATASET_PATH):
     data = load_dataset(path)
-    if not data: print("No entries to validate."); return
+    if not data: print("No entries."); return
     issues = 0
     for i, entry in enumerate(data):
         if not isinstance(entry, dict) or "prompt" not in entry or "completion" not in entry:
@@ -566,7 +660,7 @@ def validate_dataset(path=DATASET_PATH):
 
 
 def export_snapshot(path=DATASET_PATH, label=""):
-    if not os.path.exists(path): print("No dataset to snapshot."); return
+    if not os.path.exists(path): print("No dataset."); return
     os.makedirs(SNAPSHOT_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     suf = f"_{label}" if label else ""
@@ -590,7 +684,7 @@ def sync_dataset(target_dir=None):
     dest = target_dir or SYNC_DIR
     if not dest: print("No sync target."); return
     os.makedirs(dest, exist_ok=True)
-    files = [f for f in [DATASET_PATH, WEAK_REPLIES_PATH, CONFLICT_PATH, ESCALATION_LOG_PATH, WEIGHT_LOG_PATH] if os.path.exists(f)]
+    files = [f for f in [DATASET_PATH, WEAK_REPLIES_PATH, CONFLICT_PATH, CONFLICT_LOG_PATH, ESCALATION_LOG_PATH, WEIGHT_LOG_PATH] if os.path.exists(f)]
     s = export_snapshot(); g = export_gold_dataset()
     if s: files.append(s)
     if g: files.append(g)
@@ -630,9 +724,7 @@ def fetch_source(source_name, query):
     url = EXTERNAL_SOURCES.get(source_name)
     if not url: return None
     try:
-        if source_name == "wikipedia":
-            full = url.format(query=query.strip().replace(" ", "_"))
-        else: full = url.format(query=urllib.parse.quote(query))
+        full = url.format(query=query.strip().replace(" ", "_")) if source_name == "wikipedia" else url.format(query=urllib.parse.quote(query))
         req = urllib.request.Request(full, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
@@ -651,8 +743,7 @@ def fetch_source(source_name, query):
 def layered_lookup(query):
     cached = cache_lookup(query)
     if cached: return cached
-    results = [fetch_source(src, query) for src in EXTERNAL_SOURCES]
-    results = [r for r in results if r]
+    results = [r for src in EXTERNAL_SOURCES if (r := fetch_source(src, query))]
     if results: cache_store(query, results)
     return results
 
@@ -678,7 +769,7 @@ def apply_template(user_input, dynamic_weights=None):
 
 def train_from_dataset(base_model=MODEL_VERSION, path=DATASET_PATH, new_model="empathetic-mentor", min_score=80):
     data = load_dataset(path)
-    if len(data) < 5: print("Need >= 5 entries."); return
+    if len(data) < 5: print("Need >= 5."); return
     scored = sorted([(score_completion(e["completion"]), e) for e in data], key=lambda x: x[0], reverse=True)
     hq = [e for s, e in scored if s >= min_score] or [e for _, e in scored[:10]]
     export_snapshot(path)
@@ -717,32 +808,403 @@ def handle_escalation_tier(count, user_input, prompt):
     return None
 
 
+NARRATION_INTERVAL = 0
+_last_drift_count = 0
+
+def start_narration_scheduler(interval_minutes):
+    def _loop():
+        global _last_drift_count
+        while True:
+            time.sleep(interval_minutes * 60)
+            if VOICE_ENGINE:
+                speak_analytics_trends()
+            if os.path.exists(WEIGHT_LOG_PATH):
+                with open(WEIGHT_LOG_PATH, encoding="utf-8") as f:
+                    history = [json.loads(line) for line in f if line.strip()]
+                drift_count = 0
+                if len(history) >= 3:
+                    latest = history[-1].get("weights", {})
+                    for name in latest:
+                        vals = [h["weights"].get(name, 50) for h in history]
+                        if abs(vals[-1] - vals[0]) > DRIFT_THRESHOLD:
+                            drift_count += 1
+                if drift_count > _last_drift_count and drift_count > 0:
+                    speak_text(f"Alert: {drift_count} persona drift events detected.")
+                _last_drift_count = drift_count
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+def speak_analytics_trends():
+    parts = []
+    if not os.path.exists(WEIGHT_LOG_PATH):
+        speak_text("No weight history available.")
+        return
+    with open(WEIGHT_LOG_PATH, encoding="utf-8") as f:
+        history = [json.loads(line) for line in f if line.strip()]
+    if len(history) < 3:
+        speak_text("Not enough history for trend analysis.")
+        return
+    latest = history[-1].get("weights", {})
+    for name in latest:
+        vals = [h["weights"].get(name, 50) for h in history]
+        bl, cur = vals[0], vals[-1]
+        diff = cur - bl
+        if abs(diff) > DRIFT_THRESHOLD:
+            direction = "drifted up" if diff > 0 else "drifted down"
+            parts.append(f"{name} persona has {direction} {abs(diff):.0f} points from baseline.")
+        elif abs(diff) > 5:
+            direction = "increased" if diff > 0 else "decreased"
+            parts.append(f"{name} persona {direction} by {abs(diff):.0f} points.")
+    if not parts:
+        parts.append("All personas are stable.")
+    summary = " ".join(parts)
+    print(f"   Voice trends: {summary}")
+    speak_text(summary)
+    return parts
+
+
+def dashboard_gui():
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+    except ImportError:
+        print("tkinter not available. Cannot start GUI.")
+        return
+
+    root = tk.Tk()
+    root.title("Ollama Dashboard")
+    root.geometry("780x750")
+    root.configure(bg="#1e1e2e")
+
+    title = tk.Label(root, text="Emotional Ollama Dashboard", font=("Segoe UI", 14, "bold"),
+                     fg="#cdd6f4", bg="#1e1e2e")
+    title.pack(pady=8)
+
+    main_frame = tk.Frame(root, bg="#1e1e2e")
+    main_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+    notepad = ttk.Notebook(main_frame)
+    notepad.pack(fill="both", expand=True)
+
+    tab_charts = tk.Frame(notepad, bg="#1e1e2e")
+    tab_conflicts = tk.Frame(notepad, bg="#1e1e2e")
+    tab_controls = tk.Frame(notepad, bg="#1e1e2e")
+    notepad.add(tab_charts, text="Charts")
+    notepad.add(tab_conflicts, text="Conflicts")
+    notepad.add(tab_controls, text="Controls")
+
+    weight_frame = tk.LabelFrame(tab_charts, text="Persona Weights", fg="#cdd6f4",
+                                  bg="#1e1e2e", font=("Segoe UI", 10, "bold"))
+    weight_frame.pack(fill="x", pady=4)
+    weight_canvas = tk.Canvas(weight_frame, height=80, bg="#1e1e2e", highlightthickness=0)
+    weight_canvas.pack(fill="x", padx=5, pady=5)
+
+    cache_frame = tk.LabelFrame(tab_charts, text="Cache Freshness", fg="#cdd6f4",
+                                 bg="#1e1e2e", font=("Segoe UI", 10, "bold"))
+    cache_frame.pack(fill="x", pady=4)
+    cache_canvas = tk.Canvas(cache_frame, height=60, bg="#1e1e2e", highlightthickness=0)
+    cache_canvas.pack(fill="x", padx=5, pady=5)
+
+    heat_frame = tk.LabelFrame(tab_charts, text="Escalation Heatmap", fg="#cdd6f4",
+                                bg="#1e1e2e", font=("Segoe UI", 10, "bold"))
+    heat_frame.pack(fill="both", expand=True, pady=4)
+    heat_canvas = tk.Canvas(heat_frame, bg="#1e1e2e", highlightthickness=0)
+    heat_canvas.pack(fill="both", expand=True, padx=5, pady=5)
+
+    conflict_canvas = tk.Canvas(tab_conflicts, bg="#1e1e2e", highlightthickness=0)
+    conflict_canvas.pack(fill="both", expand=True, padx=5, pady=5)
+    conflict_inner = tk.Frame(conflict_canvas, bg="#1e1e2e")
+    conflict_canvas.create_window((0, 0), window=conflict_inner, anchor="nw")
+
+    def _on_conflict_configure(event):
+        conflict_canvas.configure(scrollregion=conflict_canvas.bbox("all"))
+    conflict_inner.bind("<Configure>", _on_conflict_configure)
+
+    status_bar = tk.Label(root, text="", fg="#a6adc8", bg="#1e1e2e",
+                          font=("Segoe UI", 9), anchor="w")
+    status_bar.pack(fill="x", padx=10, pady=2)
+
+    btn_frame = tk.Frame(root, bg="#1e1e2e")
+    btn_frame.pack(pady=5)
+    speak_btn = tk.Button(btn_frame, text="Speak Summary", command=speak_dashboard_summary,
+                          bg="#89b4fa", fg="#1e1e2e", font=("Segoe UI", 9, "bold"),
+                          relief="flat", padx=10)
+    speak_btn.pack(side="left", padx=4)
+    trends_btn = tk.Button(btn_frame, text="Analyze Trends", command=speak_analytics_trends,
+                           bg="#f9e2af", fg="#1e1e2e", font=("Segoe UI", 9, "bold"),
+                           relief="flat", padx=10)
+    trends_btn.pack(side="left", padx=4)
+
+    slider_vars = {}
+    for pname in ["mentor", "coach", "teacher"]:
+        row = tk.Frame(tab_controls, bg="#1e1e2e")
+        row.pack(fill="x", pady=6, padx=10)
+        c = {"mentor": "#89b4fa", "coach": "#a6e3a1", "teacher": "#f9e2af"}.get(pname, "#89b4fa")
+        tk.Label(row, text=f" {pname}", bg="#1e1e2e", fg=c, font=("Segoe UI", 10, "bold"),
+                 width=10, anchor="w").pack(side="left")
+        slider_vars[pname] = tk.IntVar(value=DYNAMIC_WEIGHTS.get(pname, 50))
+        slider = tk.Scale(row, from_=0, to=100, orient="horizontal", variable=slider_vars[pname],
+                          bg="#1e1e2e", fg="#cdd6f4", troughcolor="#313244", highlightthickness=0,
+                          length=300, font=("Segoe UI", 8))
+        slider.pack(side="left", padx=5)
+        val_label = tk.Label(row, textvariable=slider_vars[pname], bg="#1e1e2e", fg="#cdd6f4",
+                             font=("Segoe UI", 9, "bold"), width=4)
+        val_label.pack(side="left")
+
+    def apply_sliders():
+        changed = False
+        for pname, var in slider_vars.items():
+            new_val = var.get()
+            if DYNAMIC_WEIGHTS.get(pname, 50) != new_val:
+                DYNAMIC_WEIGHTS[pname] = new_val
+                changed = True
+        if changed:
+            if VOICE_ENGINE:
+                apply_persona_voice(PERSONA_SPEC)
+            normalize_weights(DYNAMIC_WEIGHTS)
+            log_weights(DYNAMIC_WEIGHTS)
+            print(f"   Slider weights: {DYNAMIC_WEIGHTS}")
+
+    apply_btn = tk.Button(tab_controls, text="Apply Weights", command=apply_sliders,
+                          bg="#89b4fa", fg="#1e1e2e", font=("Segoe UI", 9, "bold"),
+                          relief="flat", padx=10)
+    apply_btn.pack(pady=10)
+
+    reset_btn = tk.Button(tab_controls, text="Reset to 50", command=lambda: [
+        slider_vars[p].set(50) for p in slider_vars],
+                          bg="#f38ba8", fg="#1e1e2e", font=("Segoe UI", 9, "bold"),
+                          relief="flat", padx=10)
+    reset_btn.pack(pady=2)
+
+    COLORS = {"mentor": "#89b4fa", "coach": "#a6e3a1", "teacher": "#f9e2af"}
+    AVATARS = {"mentor": "M", "coach": "C", "teacher": "T"}
+    _anim_targets = {}
+
+    def draw_animated_bars(canvas, items, color_map, max_val=100, tag="bars"):
+        nonlocal _anim_targets
+        w = canvas.winfo_width() or 400
+        h = canvas.winfo_height() or 80
+        canvas.delete(tag)
+        if not items:
+            canvas.create_text(w // 2, h // 2, text="No data", fill="#6c7086",
+                               font=("Segoe UI", 9), tags=tag)
+            return
+        n = len(items)
+        bar_w = max(24, (w - 20) // n - 12)
+        targets = {}
+        for i, (label, val) in enumerate(items):
+            x0 = 15 + i * (bar_w + 12)
+            bh = max(4, val / max_val * (h - 30))
+            y0 = h - 15 - bh
+            x1 = x0 + bar_w
+            targets[label] = (x0, y0, x1, bh)
+        _anim_targets[tag] = (_anim_targets.get(tag, {}), targets)
+
+        def animate(step=0, max_steps=10):
+            old_targets, new_targets = _anim_targets.get(tag, ({}, {}))
+            if step >= max_steps:
+                _draw_final(canvas, new_targets, color_map, h, bar_w, tag)
+                return
+            t = step / max_steps
+            interp = {}
+            for label in new_targets:
+                old = old_targets.get(label)
+                new = new_targets[label]
+                if old:
+                    ix0 = old[0] + (new[0] - old[0]) * t
+                    iy0 = old[1] + (new[1] - old[1]) * t
+                    ix1 = old[2] + (new[2] - old[2]) * t
+                    ibh = old[3] + (new[3] - old[3]) * t
+                else:
+                    ix0, iy0, ix1, ibh = new
+                    iy0 = h - 15
+                    ibh = 4
+                interp[label] = (ix0, iy0, ix1, ibh)
+            _draw_final(canvas, interp, color_map, h, bar_w, tag)
+            canvas.after(40, animate, step + 1, max_steps)
+
+        animate()
+
+    def _draw_final(canvas, items_dict, color_map, h, bar_w, tag):
+        canvas.delete(tag)
+        for label, (x0, y0, x1, bh) in items_dict.items():
+            color = color_map.get(label, "#89b4fa")
+            canvas.create_rectangle(x0, y0, x1, h - 15, fill=color, outline="", tags=tag)
+            cx = (x0 + x1) // 2
+            avatar = AVATARS.get(label, "?")
+            canvas.create_oval(cx - 8, y0 - 16, cx + 8, y0, fill=color, outline="#45475a", tags=tag)
+            canvas.create_text(cx, y0 - 8, text=avatar, fill="#1e1e2e",
+                               font=("Segoe UI", 8, "bold"), tags=tag)
+            canvas.create_text(cx, h - 4, text=f"{label} {int(bh * 100 / (h - 30) * 100 / 100) if (h - 30) else 0}",
+                               fill="#cdd6f4", font=("Segoe UI", 7), tags=tag)
+
+    def draw_heatmap():
+        heat_canvas.delete("heat")
+        w = heat_canvas.winfo_width() or 400
+        h = heat_canvas.winfo_height() or 150
+        events = []
+        if os.path.exists(ESCALATION_LOG_PATH):
+            with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
+                events = [json.loads(line) for line in f if line.strip()]
+        if not events:
+            heat_canvas.create_text(w // 2, h // 2, text="No escalation data",
+                                    fill="#6c7086", font=("Segoe UI", 9), tags="heat")
+            return
+        heat = defaultdict(lambda: Counter())
+        for e in events:
+            text = e.get("user_input", "")
+            intent = detect_intent(text) or "general"
+            heat[intent][e.get("tier", "?")] += 1
+        intents = sorted(heat)
+        tiers = sorted({e.get("tier") for e in events})
+        if not intents or not tiers:
+            return
+        cell_w = max(30, (w - 40) // len(tiers))
+        cell_h = max(24, (h - 40) // len(intents))
+        max_c = max((heat[i][t] for i in intents for t in tiers), default=1)
+        for ri, intent in enumerate(intents):
+            heat_canvas.create_text(10, 15 + ri * (cell_h + 4) + cell_h // 2,
+                                    text=intent[:8], fill="#cdd6f4",
+                                    font=("Segoe UI", 8), anchor="w", tags="heat")
+            for ci, tier in enumerate(tiers):
+                x0 = 80 + ci * (cell_w + 4)
+                y0 = 10 + ri * (cell_h + 4)
+                count = heat[intent].get(tier, 0)
+                intensity = min(1.0, count / max_c) if max_c else 0
+                r = int(30 + (205 - 30) * intensity)
+                g = int(30 + (180 - 30) * (1 - intensity))
+                b = int(30 + (220 - 30) * (1 - intensity))
+                color = f"#{r:02x}{g:02x}{b:02x}"
+                heat_canvas.create_rectangle(x0, y0, x0 + cell_w, y0 + cell_h,
+                                              fill=color, outline="#45475a", tags="heat")
+                heat_canvas.create_text(x0 + cell_w // 2, y0 + cell_h // 2,
+                                        text=str(count), fill="#cdd6f4" if count else "#6c7086",
+                                        font=("Segoe UI", 8), tags="heat")
+            for ci, tier in enumerate(tiers):
+                heat_canvas.create_text(80 + ci * (cell_w + 4) + cell_w // 2, 0,
+                                        text=f"T{tier}", fill="#a6adc8",
+                                        font=("Segoe UI", 8), anchor="n", tags="heat")
+
+    def rebuild_conflicts():
+        for w in conflict_inner.winfo_children():
+            w.destroy()
+        if not os.path.exists(CONFLICT_PATH):
+            tk.Label(conflict_inner, text="No conflicts.", bg="#1e1e2e", fg="#6c7086",
+                     font=("Segoe UI", 9)).pack(pady=20)
+            return
+        with open(CONFLICT_PATH, encoding="utf-8") as f:
+            entries = [json.loads(line) for line in f if line.strip()]
+        if not entries:
+            tk.Label(conflict_inner, text="No conflicts.", bg="#1e1e2e", fg="#6c7086",
+                     font=("Segoe UI", 9)).pack(pady=20)
+            return
+        entries.sort(key=lambda e: e.get("priority", 30), reverse=True)
+        for idx, e in enumerate(entries):
+            prompt = e.get("prompt", "")[:60]
+            sc = [c.get("score", 0) for c in e.get("completions", [])]
+            row = tk.Frame(conflict_inner, bg="#313244", bd=1, relief="solid")
+            row.pack(fill="x", pady=2, padx=2)
+            tk.Label(row, text=f"[{idx}] pri {e.get('priority', 30)}",
+                     bg="#313244", fg="#a6adc8", font=("Segoe UI", 8, "bold"), width=12).pack(side="left", padx=4)
+            tk.Label(row, text=f"{prompt}...  scores={sc}",
+                     bg="#313244", fg="#cdd6f4", font=("Segoe UI", 8)).pack(side="left", fill="x", expand=True)
+            def resolve_cb(i=idx, entry=e):
+                ca = entry["completions"][0]
+                cb = entry["completions"][1]
+                sa, sb = ca.get("score", 0), cb.get("score", 0)
+                best = ca if sa >= sb else cb
+                resolve_conflict(i, best["completion"], method="gui")
+                rebuild_conflicts()
+                if VOICE_ENGINE:
+                    speak_text("Conflict resolved.")
+            def skip_cb(i=idx):
+                skip_conflict(i)
+                rebuild_conflicts()
+                if VOICE_ENGINE:
+                    speak_text("Conflict skipped.")
+            tk.Button(row, text="Resolve", command=resolve_cb,
+                      bg="#a6e3a1", fg="#1e1e2e", font=("Segoe UI", 8, "bold"),
+                      relief="flat", padx=6).pack(side="right", padx=2)
+            tk.Button(row, text="Skip", command=skip_cb,
+                      bg="#f38ba8", fg="#1e1e2e", font=("Segoe UI", 8, "bold"),
+                      relief="flat", padx=6).pack(side="right", padx=2)
+        conflict_canvas.configure(scrollregion=conflict_canvas.bbox("all"))
+
+    def refresh():
+        weights = DYNAMIC_WEIGHTS.copy() if DYNAMIC_WEIGHTS else {}
+        if not weights and PERSONA_SPEC:
+            for part in PERSONA_SPEC.split("+"):
+                p = part.strip()
+                name = p.rsplit(":", 1)[0].strip() if ":" in p else p
+                if name in PERSONAS:
+                    weights[name] = int(p.split(":")[1]) if ":" in p else 50
+        w_items = [(k, v) for k, v in sorted(weights.items())]
+        draw_animated_bars(weight_canvas, w_items, COLORS, tag="wbars")
+
+        if os.path.exists(CACHE_PATH):
+            with open(CACHE_PATH, encoding="utf-8") as f:
+                ce = [json.loads(line) for line in f if line.strip()]
+            fs_by_src = defaultdict(list)
+            for e in ce:
+                fs_by_src[e.get("source", "unknown")].append(
+                    freshness_score(e.get("source", ""), e.get("cached_at", "")))
+            c_items = [(src, int(sum(scores) / len(scores))) for src, scores in fs_by_src.items()]
+            draw_animated_bars(cache_canvas, c_items, {}, max_val=100, tag="cbars")
+
+        draw_heatmap()
+        rebuild_conflicts()
+
+        tq = CACHE_HITS + CACHE_MISSES
+        hr = f"{CACHE_HITS / tq * 100:.0f}%" if tq else "N/A"
+        ds = len(load_dataset())
+        esc_count = len(ESCALATION_EVENTS)
+        if os.path.exists(ESCALATION_LOG_PATH):
+            with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
+                esc_count = sum(1 for _ in f if _.strip())
+        status_bar.config(text=f"Dataset: {ds} | Cache: {hr} hit rate | Escalations: {esc_count}")
+
+        root.after(3000, refresh)
+
+    root.after(500, refresh)
+    root.mainloop()
+
+
 def chat_with_feeling(persona_name="mentor"):
     global LAST_REPLY, LAST_PROMPT, LAST_SCORE, RECENT_SCORES, CONSECUTIVE_LOW, DYNAMIC_WEIGHTS, PERSONA_SPEC
     PERSONA_SPEC = persona_name
     DYNAMIC_WEIGHTS = {}
     for part in persona_name.split("+"):
-        p = part.strip()
-        name = p.rsplit(":", 1)[0].strip() if ":" in p else p
+        p = part.strip(); name = p.rsplit(":", 1)[0].strip() if ":" in p else p
         if name in PERSONAS: DYNAMIC_WEIGHTS[name] = 50
     data = load_dataset()
     active_persona = build_persona(data, persona_name)
     print(f"Chat started [persona: {persona_name}]")
-    print("Commands: exit | 99 | correct | stats | validate | gold | conflicts | resolve <i> <t> | resolve-skip <i> | dashboard | heatmap")
+    print("Commands: exit | 99 | correct | stats | validate | gold | conflicts | resolve | resolve-skip | dashboard | heatmap | forecast")
     if EXTERNAL_ENABLED: print(f"External: {', '.join(EXTERNAL_SOURCES)}")
     try:
         while True:
             ui = input("You: "); cmd = ui.strip().lower()
             if cmd in ("exit", "quit"): print("Bye."); break
-            if cmd == "99":
-                data = load_dataset(); active_persona = build_persona(data, persona_name, DYNAMIC_WEIGHTS)
-                print(f"Reconnected ({avg_conf_str(RECENT_SCORES)})."); continue
+            if cmd == "99": data = load_dataset(); active_persona = build_persona(data, persona_name, DYNAMIC_WEIGHTS); print(f"Reconnected ({avg_conf_str(RECENT_SCORES)})."); continue
             if cmd == "stats": dataset_stats(); continue
             if cmd == "validate": validate_dataset(); continue
             if cmd == "gold": export_gold_dataset(); continue
             if cmd == "conflicts": show_conflicts(); continue
             if cmd == "dashboard": show_dashboard(); continue
             if cmd == "heatmap": show_escalation_heatmap(); continue
+            if cmd == "forecast":
+                f = forecast_persona()
+                if not f: print("   Not enough data to forecast."); continue
+                print(f"   Suggested blend: {f}")
+                inp = input("   Switch to this blend? (y/n): ").strip().lower()
+                if inp == "y":
+                    persona_name = f; DYNAMIC_WEIGHTS = {}
+                    for part in persona_name.split("+"):
+                        p = part.strip(); name = p.rsplit(":", 1)[0].strip() if ":" in p else p
+                        if name in PERSONAS: DYNAMIC_WEIGHTS[name] = int(p.split(":")[1]) if ":" in p else 50
+                    active_persona = build_persona(data, persona_name, DYNAMIC_WEIGHTS)
+                    print(f"   Switched to blend: {persona_name}")
+                continue
             if cmd.startswith("resolve ") and len(cmd.split()) >= 2:
                 parts = ui.split(maxsplit=2)
                 try: idx = int(parts[1]); resolve_conflict(idx, parts[2] if len(parts) > 2 else "")
@@ -792,8 +1254,409 @@ def avg_conf_str(s):
     return f"avg {sum(s)/len(s):.0f}/100" if s else "no data"
 
 
+def init_voice():
+    global VOICE_RECOGNIZER, VOICE_ENGINE, VOICE_ENABLED
+    try:
+        VOICE_RECOGNIZER = sr.Recognizer()
+        VOICE_RECOGNIZER.energy_threshold = 3000
+        VOICE_RECOGNIZER.dynamic_energy_threshold = True
+        VOICE_RECOGNIZER.pause_threshold = 0.8
+        VOICE_ENGINE = pyttsx3.init()
+        VOICE_ENGINE.setProperty("rate", 160)
+        VOICE_ENGINE.setProperty("volume", 0.9)
+        voices = VOICE_ENGINE.getProperty("voices")
+        if voices:
+            for v in voices:
+                if "zira" in v.name.lower() or "david" in v.name.lower():
+                    VOICE_ENGINE.setProperty("voice", v.id)
+                    break
+        VOICE_ENABLED = True
+        return True
+    except Exception as e:
+        print(f"   Voice init failed: {e}")
+        return False
+
+
+def apply_persona_voice(persona_name):
+    if not VOICE_ENGINE:
+        return
+    parts = persona_name.split("+")
+    primary = parts[0].split(":")[0].strip()
+    vc = VOICE_PERSONA_VOICES.get(primary, {"rate": 160, "volume": 0.9})
+    VOICE_ENGINE.setProperty("rate", vc["rate"])
+    VOICE_ENGINE.setProperty("volume", vc["volume"])
+    target = vc.get("voice_name", "").lower()
+    if target:
+        voices = VOICE_ENGINE.getProperty("voices")
+        for v in voices:
+            if target in v.name.lower():
+                VOICE_ENGINE.setProperty("voice", v.id)
+                break
+
+
+ADAPTIVE_CUES = {
+    "motivate": [(523, 150), (659, 150), (784, 200)],
+    "explain": [(440, 200), (440, 200), (440, 200)],
+    "advise": [(784, 150), (659, 150), (523, 200)],
+}
+
+def weighted_voice_schedule(weights, total):
+    if not weights or total <= 0:
+        return []
+    w_sum = sum(weights.values())
+    if w_sum <= 0:
+        return []
+    schedule = []
+    for persona, weight in weights.items():
+        count = max(1, round(weight / w_sum * total))
+        schedule.extend([persona] * count)
+    import random
+    random.shuffle(schedule)
+    return schedule[:total]
+
+
+def play_escalation_cue(tier, intent=None):
+    notes = ADAPTIVE_CUES.get(intent)
+    if notes:
+        freqs = [n[0] for n in notes]
+        durs = [n[1] for n in notes]
+        for i in range(min(tier, len(freqs))):
+            winsound.Beep(freqs[i], durs[i])
+            if i < tier - 1 and i < len(freqs) - 1:
+                time.sleep(0.06)
+    else:
+        if tier == 1:
+            winsound.Beep(400, 200)
+        elif tier == 2:
+            winsound.Beep(500, 150)
+            time.sleep(0.1)
+            winsound.Beep(500, 150)
+        elif tier == 3:
+            winsound.Beep(700, 100)
+            time.sleep(0.08)
+            winsound.Beep(700, 100)
+            time.sleep(0.08)
+            winsound.Beep(700, 100)
+
+
+def speak_text(text):
+    if not VOICE_ENGINE:
+        return
+    def _speak():
+        VOICE_ENGINE.say(text)
+        VOICE_ENGINE.runAndWait()
+    threading.Thread(target=_speak, daemon=True).start()
+
+
+def speak_dashboard_summary():
+    data = load_dataset()
+    parts = []
+    if data:
+        parts.append(f"Dataset has {len(data)} entries.")
+    if RECENT_SCORES:
+        avg = sum(RECENT_SCORES) / len(RECENT_SCORES)
+        parts.append(f"Average confidence is {avg:.0f} percent.")
+    if os.path.exists(ESCALATION_LOG_PATH):
+        with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
+            events = [json.loads(line) for line in f if line.strip()]
+        if events:
+            tiers = Counter(e.get("tier") for e in events)
+            parts.append(f"{len(events)} escalation events logged.")
+            for t in sorted(tiers):
+                label = {1: "external lookups", 2: "persona shifts", 3: "hard fallbacks"}.get(t, f"tier {t}")
+                parts.append(f"{tiers[t]} {label}.")
+    if os.path.exists(WEIGHT_LOG_PATH):
+        with open(WEIGHT_LOG_PATH, encoding="utf-8") as f:
+            history = [json.loads(line) for line in f if line.strip()]
+        if history:
+            weights = history[-1].get("weights", {})
+            w_strs = [f"{k} {v}" for k, v in sorted(weights.items())]
+            if w_strs:
+                parts.append("Current weights: " + ", ".join(w_strs) + ".")
+    if os.path.exists(CACHE_PATH):
+        with open(CACHE_PATH, encoding="utf-8") as f:
+            cache_entries = [json.loads(line) for line in f if line.strip()]
+        parts.append(f"Cache has {len(cache_entries)} entries.")
+    summary = " ".join(parts)
+    print(f"   Voice dashboard: {summary}")
+    speak_text(summary)
+
+
+def listen_speech(timeout=5, phrase_limit=10):
+    if not VOICE_RECOGNIZER:
+        return None
+    try:
+        with sr.Microphone() as source:
+            print("   (listening...)")
+            VOICE_RECOGNIZER.adjust_for_ambient_noise(source, duration=0.3)
+            try:
+                audio = VOICE_RECOGNIZER.listen(source, timeout=timeout, phrase_time_limit=phrase_limit)
+            except sr.WaitTimeoutError:
+                print("   (no speech detected)")
+                return None
+        print("   (processing...)")
+        text = VOICE_RECOGNIZER.recognize_google(audio)
+        print(f"   (heard: {text})")
+        return text
+    except sr.UnknownValueError:
+        print("   (could not understand audio)")
+        return None
+    except sr.RequestError as e:
+        print(f"   (speech service error: {e})")
+        return None
+    except Exception as e:
+        print(f"   (mic error: {e})")
+        return None
+
+
+def chat_with_voice(persona_name="mentor"):
+    global LAST_REPLY, LAST_PROMPT, LAST_SCORE, RECENT_SCORES, CONSECUTIVE_LOW, DYNAMIC_WEIGHTS, PERSONA_SPEC
+    if not init_voice():
+        print("Voice init failed, falling back to text mode.")
+        chat_with_feeling(persona_name)
+        return
+    print("Voice chat active. Speak into your microphone.")
+    print("Say 'exit' or 'quit' to stop. Say 'command' to see available commands.")
+    apply_persona_voice(persona_name)
+    PERSONA_SPEC = persona_name
+    DYNAMIC_WEIGHTS = {}
+    for part in persona_name.split("+"):
+        p = part.strip()
+        name = p.rsplit(":", 1)[0].strip() if ":" in p else p
+        if name in PERSONAS:
+            DYNAMIC_WEIGHTS[name] = 50
+    data = load_dataset()
+    active_persona = build_persona(data, persona_name)
+    if EXTERNAL_ENABLED:
+        print(f"External sources: {', '.join(EXTERNAL_SOURCES)}")
+    try:
+        while True:
+            ui = listen_speech()
+            if ui is None:
+                continue
+            cmd = ui.strip().lower()
+            if cmd in ("exit", "quit"):
+                speak_text("Goodbye.")
+                print("Bye.")
+                break
+            if cmd in ("command", "commands"):
+                cmds = "Commands: exit, stats, validate, gold, conflicts, dashboard, heatmap, forecast, correct, resolve"
+                print(cmds)
+                speak_text("Available commands: stats, validate, gold, dashboard, heatmap, forecast, correct, and resolve")
+                continue
+            if cmd == "stats":
+                dataset_stats()
+                speak_text("Stats displayed on screen.")
+                continue
+            if cmd == "validate":
+                validate_dataset()
+                continue
+            if cmd == "gold":
+                export_gold_dataset()
+                continue
+            if cmd == "conflicts":
+                show_conflicts()
+                continue
+            if cmd == "dashboard":
+                show_dashboard()
+                speak_dashboard_summary()
+                continue
+            if cmd == "heatmap":
+                show_escalation_heatmap()
+                continue
+            if cmd == "forecast":
+                f = forecast_persona()
+                if not f:
+                    speak_text("Not enough data to forecast persona.")
+                    continue
+                speak_text(f"Suggested blend: {f}")
+                apply_persona_voice(f)
+                continue
+            if cmd.startswith("resolve "):
+                parts = ui.split(maxsplit=2)
+                try:
+                    idx = int(parts[1])
+                    resolve_conflict(idx, parts[2] if len(parts) > 2 else "", method="voice")
+                except (ValueError, IndexError):
+                    speak_text("Usage: resolve number text")
+                continue
+            if cmd.startswith("correct") and LAST_REPLY is not None:
+                fix = ui[len("correct"):].strip()
+                if fix:
+                    append_to_dataset(LAST_PROMPT, fix)
+                    generate_variations(LAST_PROMPT, fix)
+                    LAST_REPLY = fix
+                    print("Corrected.")
+                continue
+            if cmd in ("train model", "train"):
+                speak_text("Training model from dataset.")
+                train_from_dataset()
+                continue
+            if any(w in cmd for w in ["that was weak", "bad reply", "weak answer"]):
+                if LAST_PROMPT and LAST_REPLY:
+                    append_to_weak(LAST_PROMPT, LAST_REPLY, LAST_SCORE or 0)
+                    speak_text("Last reply logged as weak.")
+                else:
+                    speak_text("No reply to flag.")
+                continue
+            if cmd == "retrain":
+                if os.path.exists(WEAK_REPLIES_PATH):
+                    with open(WEAK_REPLIES_PATH, encoding="utf-8") as f:
+                        weak_count = sum(1 for _ in f if _.strip())
+                    speak_text(f"Retraining with {weak_count} weak examples.")
+                    train_from_dataset()
+                else:
+                    speak_text("No weak replies to retrain on.")
+                continue
+            if cmd == "resolve conflicts":
+                resolved = auto_resolve_conflicts()
+                if resolved:
+                    speak_text(f"Auto-resolved {resolved} conflicts.")
+                else:
+                    show_conflicts()
+                    speak_text("Showing unresolved conflicts.")
+                continue
+            if cmd in ("show heatmap", "heatmap"):
+                show_escalation_heatmap()
+                speak_text("Heatmap displayed on screen.")
+                continue
+            if cmd in ("export gold", "gold"):
+                export_gold_dataset()
+                speak_text("Gold dataset exported.")
+                continue
+            if cmd in ("show cache", "cache stats"):
+                show_cache_stats()
+                speak_text("Cache stats on screen.")
+                continue
+            if cmd in ("sync", "sync data"):
+                sync_dataset()
+                speak_text("Data synced.")
+                continue
+            if cmd in ("show stats", "stats"):
+                dataset_stats()
+                speak_text("Stats on screen.")
+                continue
+            prompt = apply_template(ui, DYNAMIC_WEIGHTS)
+            if DYNAMIC_WEIGHTS and "+" in persona_name:
+                active_persona = build_persona(data, persona_name, DYNAMIC_WEIGHTS)
+                print(f"   Weights: {DYNAMIC_WEIGHTS}")
+                log_weights(DYNAMIC_WEIGHTS)
+            try:
+                reply_chunks = []
+                tts_buffer = ""
+                speak_queue = queue.Queue()
+                tts_done = threading.Event()
+                voice_schedule = []
+                voice_idx = 0
+
+                if "+" in persona_name and DYNAMIC_WEIGHTS:
+                    blended = {k: v for k, v in DYNAMIC_WEIGHTS.items() if k in PERSONAS}
+                    if len(blended) > 1:
+                        voice_schedule = weighted_voice_schedule(blended, 30)
+
+                def tts_worker():
+                    nonlocal voice_idx
+                    while True:
+                        item = speak_queue.get()
+                        if item is None:
+                            break
+                        if isinstance(item, tuple):
+                            text, vp = item
+                        else:
+                            text, vp = item, None
+                        if vp and voice_schedule:
+                            vc = VOICE_PERSONA_VOICES.get(vp, {})
+                            target = vc.get("voice_name", "").lower()
+                            if target:
+                                voices = VOICE_ENGINE.getProperty("voices")
+                                for v in voices:
+                                    if target in v.name.lower():
+                                        VOICE_ENGINE.setProperty("voice", v.id)
+                                        break
+                            rate = vc.get("rate", 160)
+                            vol = vc.get("volume", 0.9)
+                            VOICE_ENGINE.setProperty("rate", rate)
+                            VOICE_ENGINE.setProperty("volume", vol)
+                        VOICE_ENGINE.say(text)
+                        VOICE_ENGINE.runAndWait()
+                    tts_done.set()
+
+                tts_thread = threading.Thread(target=tts_worker, daemon=True)
+                tts_thread.start()
+
+                stream = ollama.chat(model=MODEL_VERSION, messages=[
+                    {"role": "system", "content": active_persona},
+                    {"role": "user", "content": prompt},
+                ], stream=True)
+                print("Ollama: ", end="", flush=True)
+                for chunk in stream:
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        reply_chunks.append(content)
+                        print(content, end="", flush=True)
+                        tts_buffer += content
+                        sentences = re.split(r'(?<=[.!?])\s+', tts_buffer)
+                        tts_buffer = ""
+                        for i, s in enumerate(sentences):
+                            stripped = s.strip()
+                            if not stripped:
+                                continue
+                            if i == len(sentences) - 1 and not stripped[-1] in ".!?":
+                                tts_buffer = stripped
+                            else:
+                                vp = voice_schedule[voice_idx % len(voice_schedule)] if voice_schedule else None
+                                voice_idx += 1
+                                speak_queue.put((stripped, vp))
+                print()
+                if tts_buffer.strip():
+                    vp = voice_schedule[voice_idx % len(voice_schedule)] if voice_schedule else None
+                    speak_queue.put((tts_buffer.strip(), vp))
+                speak_queue.put(None)
+                tts_done.wait(timeout=30)
+                reply = "".join(reply_chunks)
+                score = score_reply(reply)
+                RECENT_SCORES.append(score)
+                if len(RECENT_SCORES) > 20:
+                    RECENT_SCORES.pop(0)
+                CONSECUTIVE_LOW = CONSECUTIVE_LOW + 1 if score < 50 else 0
+                print(f"  [{score}/100]")
+                LAST_PROMPT, LAST_REPLY, LAST_SCORE = prompt, reply, score
+                if score < 50:
+                    append_to_weak(prompt, reply, score)
+                    esc_intent = detect_intent(ui)
+                    if CONSECUTIVE_LOW >= 7:
+                        play_escalation_cue(3, esc_intent)
+                    elif CONSECUTIVE_LOW >= 5:
+                        play_escalation_cue(2, esc_intent)
+                    elif CONSECUTIVE_LOW >= 3:
+                        play_escalation_cue(1, esc_intent)
+                    tr = handle_escalation_tier(CONSECUTIVE_LOW, ui, prompt)
+                    if tr:
+                        print("Escalation:", tr[:100])
+                        append_to_dataset(prompt, tr)
+                        speak_text(tr)
+                    else:
+                        print("Fallback:", FALLBACK)
+                        append_to_dataset(prompt, FALLBACK)
+                        speak_text(FALLBACK)
+                elif score < SCORE_THRESHOLD:
+                    append_to_weak(prompt, reply, score)
+                    print("   (low confidence - reply logged for review)")
+                else:
+                    if score > 90:
+                        print("Auto-approved.")
+                    append_to_dataset(prompt, reply)
+            except Exception as e:
+                print(f"Fallback: {FALLBACK}")
+                speak_text(FALLBACK)
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        speak_text("Interrupted.")
+
+
 if __name__ == "__main__":
-    persona_name, sync_target, merge_policy = "mentor", None, "highest"
+    persona_name, sync_target, merge_policy, voice_enabled, gui_enabled, narrate_enabled = "mentor", None, "highest", False, False, False
+    narrate_interval = 5
     rest = []
     i = 1
     while i < len(sys.argv):
@@ -805,15 +1668,40 @@ if __name__ == "__main__":
             v = sys.argv[i + 1].lower()
             if v in ("low", "medium", "all"): CONFLICT_AUTO_POLICY = v
             i += 2
+        elif a == "--voice": voice_enabled = True; i += 1
+        elif a == "--gui": gui_enabled = True; i += 1
+        elif a == "--narrate": narrate_enabled = True; i += 1
+        elif a == "--narrate-interval" and i + 1 < len(sys.argv): narrate_interval = int(sys.argv[i + 1]); narrate_enabled = True; i += 2
+        elif a == "--auto-refresh": AUTO_REFRESH_ENABLED = True; i += 1
         elif a == "--federated-sync" and i + 1 < len(sys.argv): federated_sync(sys.argv[i + 1], merge_policy); sys.exit(0)
         elif a == "--conflicts": show_conflicts(); sys.exit(0)
         elif a == "--dashboard": show_dashboard(); sys.exit(0)
         elif a == "--heatmap": show_escalation_heatmap(); sys.exit(0)
+        elif a == "--forecast":
+            f = forecast_persona()
+            if f: print(f"Suggested blend: {f}")
+            else: print("Not enough data.")
+            sys.exit(0)
+        elif a == "--reinforce": reinforce_hotspots(); sys.exit(0)
         else: rest.append(a); i += 1
     sys.argv = [sys.argv[0]] + rest
-    if "--stats" in sys.argv: dataset_stats()
+    if narrate_enabled and voice_enabled:
+        init_voice()
+        if VOICE_ENGINE:
+            start_narration_scheduler(narrate_interval)
+            print(f"   Narration scheduled every {narrate_interval} min(s).")
+    if gui_enabled and not voice_enabled:
+        import threading as _thr
+        _thr.Thread(target=dashboard_gui, daemon=True).start()
+        chat_with_feeling(persona_name=persona_name)
+    elif gui_enabled and voice_enabled:
+        import threading as _thr
+        _thr.Thread(target=dashboard_gui, daemon=True).start()
+        chat_with_voice(persona_name=persona_name)
+    elif "--stats" in sys.argv: dataset_stats()
     elif "--validate" in sys.argv: validate_dataset()
     elif "--gold" in sys.argv: export_gold_dataset()
     elif "--train" in sys.argv: train_from_dataset()
     elif "--sync" in sys.argv or sync_target: sync_dataset(sync_target)
+    elif voice_enabled: chat_with_voice(persona_name=persona_name)
     else: chat_with_feeling(persona_name=persona_name)
