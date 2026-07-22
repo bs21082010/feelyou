@@ -156,7 +156,12 @@ vb.onclick=()=>{
   R.start()
 };
 
-refreshStats();updateW();setInterval(refreshStats,10000);
+async function checkLLM(){
+  try{const r=await fetch(API+'/health');const d=await r.json();
+    if(!d.llm_reachable) add('assistant','\u26A0\uFE0F LLM endpoint not reachable. Set LLM_API_URL in Vercel dashboard (Project \u2192 Settings \u2192 Environment Variables) to your Ollama or OpenAI API URL.')
+  }catch(e){}
+}
+refreshStats();updateW();setInterval(refreshStats,10000);checkLLM();
 add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?')
 </script>
 </body>

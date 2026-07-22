@@ -182,7 +182,11 @@ def call_llm(system_prompt: str, user_message: str) -> str:
             data = json.loads(resp.read())
             return data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
     except Exception as e:
-        return FALLBACK + f" (Error: {str(e)[:60]})"
+        err = str(e)[:80]
+        hint = ""
+        if "Connection refused" in err or "localhost" in err:
+            hint = " Set LLM_API_URL env var to a reachable API (e.g. Ollama, OpenAI)."
+        return FALLBACK + f" (Error: {err}.{hint})"
 
 
 @app.post("/api/chat")
@@ -235,7 +239,20 @@ async def dashboard_endpoint():
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "model": LLM_MODEL, "llm_url": LLM_API_URL}
+    reachable = False
+    try:
+        req = urllib.request.Request(LLM_API_URL, method="HEAD")
+        with urllib.request.urlopen(req, timeout=3):
+            reachable = True
+    except Exception:
+        pass
+    return {
+        "status": "ok",
+        "model": LLM_MODEL,
+        "llm_url": LLM_API_URL,
+        "llm_reachable": reachable,
+        "has_api_key": bool(LLM_API_KEY),
+    }
 
 
 @app.get("/{path:path}")
