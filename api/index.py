@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timedelta
 from collections import Counter, defaultdict
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -56,6 +56,9 @@ CONFLICT_RESOLUTIONS: list = []
 HOTSPOT_REINFORCED: set = set()
 WEAK_INTENT_COUNTER: dict = {}
 SYNC_COUNT = 0
+SYNC_HISTORY_BY_USER: dict = defaultdict(list)
+USER_CONFLICTS: dict = defaultdict(list)
+CONTRIBUTORS: dict = {}
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -324,15 +327,27 @@ async def sync_status():
         "last_sync": LAST_SYNC_STATUS,
         "last_sync_time": LAST_SYNC_TIME,
         "weak_reply_count": WEAK_REPLY_COUNT,
+        "contributors": list(CONTRIBUTORS.values()),
+        "total_contributors": len(CONTRIBUTORS),
     }
 
 
 @app.post("/api/sync")
-async def trigger_sync():
+async def trigger_sync(req: Request):
     global LAST_SYNC_TIME, LAST_SYNC_STATUS, SYNC_COUNT
+    user_id = req.headers.get("X-User-Id") or "anonymous"
     SYNC_COUNT += 1
     LAST_SYNC_TIME = datetime.now().isoformat()
     LAST_SYNC_STATUS = "synced"
+    record = {"sync_number": SYNC_COUNT, "timestamp": LAST_SYNC_TIME, "user_id": user_id}
+    SYNC_HISTORY_BY_USER[user_id].append(record)
+    CONTRIBUTORS[user_id] = {
+        "user_id": user_id,
+        "last_sync": LAST_SYNC_TIME,
+        "sync_count": len(SYNC_HISTORY_BY_USER[user_id]),
+        "conflict_count": len(USER_CONFLICTS[user_id]),
+        "status": "active",
+    }
     return {
         "status": "ok",
         "synced_at": LAST_SYNC_TIME,
@@ -340,6 +355,8 @@ async def trigger_sync():
         "total_scores": len(RECENT_SCORES),
         "weak_count": WEAK_REPLY_COUNT,
         "avg_confidence": round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None,
+        "user_id": user_id,
+        "contributor": CONTRIBUTORS[user_id],
     }
 
 
@@ -437,6 +454,10 @@ async def reinforce_hotspots():
 async def conflict_stats():
     total = len(CONFLICT_RESOLUTIONS)
     methods = Counter(r["method"] for r in CONFLICT_RESOLUTIONS)
+    by_user = defaultdict(int)
+    for r in CONFLICT_RESOLUTIONS:
+        uid = r.get("user_id", "anonymous")
+        by_user[uid] += 1
     return {
         "total": total,
         "auto": methods.get("auto", 0),
@@ -444,14 +465,36 @@ async def conflict_stats():
         "gui": methods.get("gui", 0),
         "voice": methods.get("voice", 0),
         "breakdown": dict(methods.most_common()) if total else {"none": 0},
+        "by_user": dict(by_user),
+    }
+
+
+@app.get("/api/contributors")
+async def get_contributors():
+    return {
+        "contributors": list(CONTRIBUTORS.values()),
+        "total": len(CONTRIBUTORS),
     }
 
 
 @app.post("/api/conflict-resolve")
-async def record_conflict_resolution(data: dict):
+async def record_conflict_resolution(data: dict, req: Request):
+    user_id = req.headers.get("X-User-Id") or "anonymous"
     method = data.get("method", "manual")
-    CONFLICT_RESOLUTIONS.append({"method": method, "timestamp": datetime.now().isoformat()})
-    return {"status": "ok", "method": method}
+    record = {"method": method, "timestamp": datetime.now().isoformat(), "user_id": user_id}
+    CONFLICT_RESOLUTIONS.append(record)
+    USER_CONFLICTS[user_id].append(record)
+    if user_id in CONTRIBUTORS:
+        CONTRIBUTORS[user_id]["conflict_count"] = len(USER_CONFLICTS[user_id])
+    else:
+        CONTRIBUTORS[user_id] = {
+            "user_id": user_id,
+            "last_sync": None,
+            "sync_count": 0,
+            "conflict_count": len(USER_CONFLICTS[user_id]),
+            "status": "active",
+        }
+    return {"status": "ok", "method": method, "user_id": user_id}
 
 
 @app.get("/{path:path}")

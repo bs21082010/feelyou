@@ -19,6 +19,7 @@ import time
 MODEL_VERSION = "llama3.2"
 DATASET_PATH = "curated_dataset.jsonl"
 WEAK_REPLIES_PATH = "weak_replies.jsonl"
+USER_ID = "anonymous"
 CACHE_PATH = "knowledge_cache.jsonl"
 CONFLICT_PATH = "conflict_queue.jsonl"
 ESCALATION_LOG_PATH = "escalation_log.jsonl"
@@ -680,16 +681,20 @@ def export_gold_dataset(path=DATASET_PATH, min_score=90):
     print(f"Gold: {gp} ({count} entries)"); return gp
 
 
-def sync_dataset(target_dir=None):
+def sync_dataset(target_dir=None, user_id="anonymous"):
     dest = target_dir or SYNC_DIR
     if not dest: print("No sync target."); return
     os.makedirs(dest, exist_ok=True)
+    tag_path = os.path.join(dest, "CONTRIBUTORS.txt")
+    with open(tag_path, "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now().isoformat()} | {user_id}\n")
     files = [f for f in [DATASET_PATH, WEAK_REPLIES_PATH, CONFLICT_PATH, CONFLICT_LOG_PATH, ESCALATION_LOG_PATH, WEIGHT_LOG_PATH] if os.path.exists(f)]
     s = export_snapshot(); g = export_gold_dataset()
     if s: files.append(s)
     if g: files.append(g)
     for f in files: shutil.copy2(f, os.path.join(dest, os.path.basename(f))); print(f"   Synced: {os.path.basename(f)}")
-    print(f"Sync -> {dest}")
+    print(f"{user_id} sync -> {dest}")
+    return True
 
 
 def federated_sync(remote_dir, merge_policy="highest"):
@@ -1558,8 +1563,8 @@ def chat_with_voice(persona_name="mentor"):
                 speak_text("Cache stats on screen.")
                 continue
             if cmd in ("sync", "sync data"):
-                sync_dataset()
-                speak_text("Data synced.")
+                sync_dataset(user_id=USER_ID)
+                speak_text(f"Sync complete for {USER_ID}.")
                 continue
             if cmd in ("show stats", "stats"):
                 dataset_stats()
@@ -1691,6 +1696,7 @@ def chat_with_voice(persona_name="mentor"):
 
 if __name__ == "__main__":
     persona_name, sync_target, merge_policy, voice_enabled, gui_enabled, narrate_enabled = "mentor", None, "highest", False, False, False
+    global USER_ID
     narrate_interval = 5
     rest = []
     i = 1
@@ -1703,12 +1709,13 @@ if __name__ == "__main__":
             v = sys.argv[i + 1].lower()
             if v in ("low", "medium", "all"): CONFLICT_AUTO_POLICY = v
             i += 2
+        elif a == "--user" and i + 1 < len(sys.argv): USER_ID = sys.argv[i + 1]; i += 2
         elif a == "--voice": voice_enabled = True; i += 1
         elif a == "--gui": gui_enabled = True; i += 1
         elif a == "--narrate": narrate_enabled = True; i += 1
         elif a == "--narrate-interval" and i + 1 < len(sys.argv): narrate_interval = int(sys.argv[i + 1]); narrate_enabled = True; i += 2
         elif a == "--auto-refresh": AUTO_REFRESH_ENABLED = True; i += 1
-        elif a == "--federated-sync" and i + 1 < len(sys.argv): federated_sync(sys.argv[i + 1], merge_policy); sys.exit(0)
+        elif a == "--federated-sync" and i + 1 < len(sys.argv): print(f"Syncing as {USER_ID}"); federated_sync(sys.argv[i + 1], merge_policy); sys.exit(0)
         elif a == "--conflicts": show_conflicts(); sys.exit(0)
         elif a == "--dashboard": show_dashboard(); sys.exit(0)
         elif a == "--heatmap": show_escalation_heatmap(); sys.exit(0)

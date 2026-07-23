@@ -64,6 +64,8 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors</label><div id="contributorList" class="stat">No contributors</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
@@ -78,9 +80,28 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 </div>
 <script>
 const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn');
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList');
+let userId=localStorage.getItem('youfeel_user')||'';
 
 tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
+
+function headers(){
+  const h={'Content-Type':'application/json'};
+  if(userId)h['X-User-Id']=userId;
+  return h
+}
+
+function updateUserDisplay(){
+  if(userId){ud.innerHTML='<span style="color:var(--green)">\u25CF</span> '+userId;uid.value=userId}
+  else ud.innerHTML='<span style="color:var(--red)">\u25CF</span> Not set'
+}
+function setUserId(name){
+  userId=name;localStorage.setItem('youfeel_user',name);updateUserDisplay();
+  addControl('Identity set to '+name);speakText('Hello, '+name)
+}
+sub.onclick=()=>{const n=uid.value.trim();if(n)setUserId(n)};
+uid.onkeydown=e=>{if(e.key==='Enter')sub.click()};
+if(userId)updateUserDisplay();
 
 function add(r,t,meta){
   const d=document.createElement('div');d.className='msg '+r;
@@ -149,6 +170,15 @@ async function narrateTraining(){
   }catch(e){}
 }
 
+async function refreshContributors(){
+  try{
+    const r=await fetch(API+'/contributors');const d=await r.json();
+    if(d.contributors.length){
+      cl.innerHTML=d.contributors.map(c=>'<span style="color:'+(c.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(c.last_sync?'\uD83D\uDFE2 ':'\uD83D\uDD34 ')+c.user_id+'</span> sync:'+c.sync_count+' conflict:'+c.conflict_count).join(' &middot; ')
+    }
+  }catch(e){cl.innerHTML='Offline'}
+}
+
 async function refreshStats(){
   try{
     const [r2,r3,r4,r5]=await Promise.all([
@@ -160,10 +190,11 @@ async function refreshStats(){
     const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> \u22c5 Recent: ['+d.recent_scores.slice(-5).join(',')+']';
     const ds=await r3.json();
     ns.innerHTML='<span style="color:'+(ds.last_sync==='synced'?'var(--green)':'var(--red)')+'">\u25CF</span> '+ds.last_sync+(ds.last_sync_time?' \u22c5 '+new Date(ds.last_sync_time).toLocaleTimeString():'');
+    if(ds.contributors)refreshContributors();
     const da=await r4.json();
     if(da.alert&&!alertShown.weak){ab.style.display='block';ab.textContent=da.message;alertShown.weak=1;speakText('Alert: '+da.message);setTimeout(()=>{ab.style.display='none'},8000)};
     const dc=await r5.json();
-    if(dc.total){cs.innerHTML='Total: <b>'+dc.total+'</b> \u22c5 auto: '+dc.auto+' \u22c5 gui: '+dc.gui+' \u22c5 voice: '+dc.voice+' \u22c5 manual: '+dc.manual}
+    if(dc.total){cs.innerHTML='Total: <b>'+dc.total+'</b> \u22c5 auto: '+dc.auto+' \u22c5 gui: '+dc.gui+' \u22c5 voice: '+dc.voice+' \u22c5 manual: '+dc.manual+(dc.by_user?' \u22c5 <span style="color:var(--text3)">users: '+Object.keys(dc.by_user).join(', ')+'</span>':'')}
     await refreshTraining()
   }catch(e){st.textContent='Offline'}
 }
@@ -205,12 +236,16 @@ tn.onclick=narrateTraining;
 ctb.onclick=()=>{ts.innerHTML='Cleared';fetch(API+'/reset-training',{method:'POST'}).catch(()=>{})};
 
 nb.onclick=async()=>{
+  if(!userId){
+    const n=prompt('Enter your name for sync identity:');
+    if(n){setUserId(n.trim())}else{addControl('Set your identity first');return}
+  }
   try{
-    const r2=await fetch(API+'/sync',{method:'POST'});const d=await r2.json();
+    const r2=await fetch(API+'/sync',{method:'POST',headers:headers()});const d=await r2.json();
     ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
-    const nar=d.sync_count+' sync completed. '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence;
-    speakText(nar);addControl('Sync \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence);
-    await narrateTraining()
+    const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'.';
+    speakText(nar);addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence);
+    await narrateTraining();await refreshContributors()
   }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
 };
 
