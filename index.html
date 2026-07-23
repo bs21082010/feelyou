@@ -15,7 +15,6 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .sidebar select{padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:13px;outline:none;cursor:pointer;max-width:120px}
 .sidebar .btn{padding:5px 12px;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s}
 .sidebar .btn:hover{opacity:.8}
-.sidebar .badge{font-size:10px;padding:2px 6px;border-radius:10px;font-weight:600}
 .toggle-controls{background:var(--surface2);color:var(--text);padding:5px 10px;border-radius:var(--radius-sm);border:none;font-size:11px;cursor:pointer;margin-left:auto;white-space:nowrap}
 .controls-panel{display:none;width:100%;padding:8px 0 4px;gap:8px}
 .controls-panel.open{display:flex;flex-direction:column}
@@ -28,6 +27,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .user{background:var(--blue);color:var(--bg);align-self:flex-end;border-bottom-right-radius:4px}
 .assistant{background:var(--surface2);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px}
 .msg .meta{font-size:10px;color:var(--text3);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
+.msg.control{background:var(--surface3);color:var(--yellow);align-self:center;font-size:12px;max-width:60%}
 .input-bar{display:flex;gap:8px;padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--surface3);flex-shrink:0}
 .input-bar input{flex:1;padding:10px 14px;border-radius:var(--radius);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:15px;outline:none;min-width:0}
 .input-bar input:focus{border-color:var(--blue)}
@@ -35,7 +35,6 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .input-bar .btn:hover{opacity:.85}
 .listening{color:var(--yellow);font-size:12px;animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
 @media(min-width:768px){
   body{flex-direction:row}
   .sidebar{width:280px;flex-direction:column;align-items:stretch;border-bottom:none;border-right:1px solid var(--surface3);padding:16px;overflow-y:auto;flex-shrink:0}
@@ -50,10 +49,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   .input-bar{padding:12px 20px}
   .input-bar input{font-size:14px}
 }
-@media(min-width:1024px){
-  .sidebar{width:320px}
-  .msg{max-width:70%}
-}
+@media(min-width:1024px){.sidebar{width:320px}.msg{max-width:70%}}
 </style>
 </head>
 <body>
@@ -66,22 +62,22 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   <div class="controls-panel" id="controlsPanel">
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Weights</label><div id="weights"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap</label><div id="heatmap"></div><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:4px">🔊 Narrate</button></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
   </div>
 </div>
 <div class="main">
   <div class="msgs" id="msgs"></div>
   <div class="input-bar">
-    <input id="input" placeholder="Message..." autofocus>
+    <input id="input" placeholder="Type a message, or try 'set mentor 60 coach 25 teacher 15'..." autofocus>
     <button class="btn" id="sendBtn" style="background:var(--blue);color:var(--bg)">Send</button>
   </div>
 </div>
 <script>
 const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-const i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner');
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats');
 
 tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
 
@@ -91,9 +87,20 @@ function add(r,t,meta){
   if(meta){const m2=document.createElement('div');m2.className='meta';m2.textContent=meta;d.appendChild(m2)}
   m.appendChild(d);m.scrollTop=m.scrollHeight
 }
+function addControl(t){add('control','⚙️ '+t)}
+function speakText(text){if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(text);u.rate=1.1;speechSynthesis.speak(u)}}
 
-function speakText(text){
-  if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(text);u.rate=1.1;speechSynthesis.speak(u)}
+function parseWeightText(text){
+  const parts=text.toLowerCase().split(/[,;]+/);
+  const newW={};let found=0;
+  for(const p of parts){
+    const m=p.match(/\s*(mentor|coach|teacher)\s*[=:]\s*(\d+)/);
+    if(m){newW[m[1]]=Math.min(100,Math.max(0,parseInt(m[2])));found++}
+  }
+  if(found>=2)return newW;
+  const m2=text.toLowerCase().match(/(mentor|coach|teacher)\s+(\d+)/g);
+  if(m2&&m2.length>=2){m2.forEach(p=>{const[,n,v]=p.match(/(mentor|coach|teacher)\s+(\d+)/);newW[n]=Math.min(100,Math.max(0,parseInt(v)))});return newW}
+  return null
 }
 
 async function chat(msg){
@@ -106,19 +113,6 @@ async function chat(msg){
     if(d.escalation_tier)cue(d.escalation_tier,d.intent)
   }catch(e){add('assistant','Error: '+e.message)}
   i.disabled=0;s.disabled=0;i.focus()
-}
-
-function parseVoiceWeights(text){
-  const parts=text.toLowerCase().split(/[,;]+/);
-  const newW={};let found=0;
-  for(const p of parts){
-    const m=p.match(/\s*(mentor|coach|teacher)\s*[=:]\s*(\d+)/);
-    if(m){newW[m[1]]=Math.min(100,Math.max(0,parseInt(m[2])));found++}
-  }
-  if(found>=2)return newW;
-  const m2=text.toLowerCase().match(/(mentor|coach|teacher)\s+(\d+)/g);
-  if(m2&&m2.length>=2){m2.forEach(p=>{const[,n,v]=p.match(/(mentor|coach|teacher)\s+(\d+)/);newW[n]=Math.min(100,Math.max(0,parseInt(v)))});return newW}
-  return null
 }
 
 function updateW(){
@@ -135,17 +129,18 @@ function updateW(){
 
 async function refreshStats(){
   try{
-    const r2=await fetch(API+'/dashboard');const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> &middot; Recent: ['+d.recent_scores.slice(-5).join(',')+']';
+    const r2=await fetch(API+'/dashboard');const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> \u22c5 Recent: ['+d.recent_scores.slice(-5).join(',')+']';
     const r3=await fetch(API+'/sync-status');const ds=await r3.json();
-    const dot=ds.last_sync==='synced'?'🟢':'🔴';ns.innerHTML='<span class="sync-dot" style="background:'+(ds.last_sync==='synced'?'var(--green)':'var(--red)')+'"></span> '+ds.last_sync;
+    ns.innerHTML='<span style="color:'+(ds.last_sync==='synced'?'var(--green)':'var(--red)')+'">\u25CF</span> '+ds.last_sync+(ds.last_sync_time?' \u22c5 '+new Date(ds.last_sync_time).toLocaleTimeString():'');
     const r4=await fetch(API+'/weak-alert');const da=await r4.json();
-    if(da.alert&&!alertShown.weak){ab.style.display='block';ab.textContent=da.message;alertShown.weak=1;speakText('Alert: '+da.message);setTimeout(()=>{ab.style.display='none'},8000)}
+    if(da.alert&&!alertShown.weak){ab.style.display='block';ab.textContent=da.message;alertShown.weak=1;speakText('Alert: '+da.message);setTimeout(()=>{ab.style.display='none'},8000)};
+    const r5=await fetch(API+'/conflict-stats');const dc=await r5.json();
+    if(dc.total){cs.innerHTML='Total: <b>'+dc.total+'</b> \u22c5 auto: '+dc.auto+' \u22c5 gui: '+dc.gui+' \u22c5 voice: '+dc.voice+' \u22c5 manual: '+dc.manual}
   }catch(e){st.textContent='Offline'}
 }
 
 async function updateHeatmap(){
   try{
-    const r2=await fetch(API+'/sync-status');const d=await r2.json();const c=d.weak_reply_count||0;
     const intents=['motivate','explain','advise','general'];const tiers=[1,2,3];
     h.innerHTML='<div style="display:grid;grid-template-columns:70px repeat(3,1fr);gap:2px;font-size:10px"><div></div><div style="text-align:center;color:var(--text3)">T1</div><div style="text-align:center;color:var(--text3)">T2</div><div style="text-align:center;color:var(--text3)">T3</div>'+intents.map(i=>'<div style="color:var(--text2)">'+i+'</div>'+tiers.map(t=>'<div style="background:var(--surface3);padding:3px;text-align:center;border-radius:3px;color:var(--text3)">0</div>').join('')).join('')+'</div>'
   }catch(e){}
@@ -164,15 +159,34 @@ function cue(tier,intent){
 }
 
 p.onchange=()=>{persona=p.value};
-s.onclick=()=>{const t=i.value.trim();if(t){i.value='';chat(t)}};
+
+s.onclick=()=>{
+  const t=i.value.trim();
+  if(!t)return;i.value='';
+  const lower=t.toLowerCase();
+  if(lower.startsWith('set ')||lower.startsWith('weights ')||lower.startsWith('weight ')){
+    const parsed=parseWeightText(t);
+    if(parsed){weights=parsed;updateW();addControl('Weights set: '+JSON.stringify(weights));speakText('Weights updated');return}
+  }
+  chat(t)
+};
 i.onkeydown=e=>{if(e.key==='Enter')s.click()};
 
 nb.onclick=async()=>{
-  try{await fetch(API+'/sync',{method:'POST'});ns.innerHTML='🟢 synced';speakText('Sync complete')}catch(e){ns.innerHTML='🔴 sync failed'}
+  try{
+    const r2=await fetch(API+'/sync',{method:'POST'});const d=await r2.json();
+    ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
+    const nar=d.sync_count+' sync completed. '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence;
+    speakText(nar);addControl('Sync \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence)
+  }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
 };
 
 nh.onclick=async()=>{
-  try{const r2=await fetch(API+'/heatmap-narration');const d=await r2.json();speakText(d.narration)}catch(e){}
+  try{const r2=await fetch(API+'/heatmap-narration');const d=await r2.json();addControl('Narrated: '+d.narration);speakText(d.narration)}catch(e){}
+};
+
+rb.onclick=async()=>{
+  try{const r2=await fetch(API+'/reinforce');const d=await r2.json();addControl(d.message);speakText(d.message)}catch(e){}
 };
 
 vb.onclick=()=>{
@@ -184,8 +198,8 @@ vb.onclick=()=>{
   R.onend=()=>{listening=0;vb.textContent='\uD83C\uDFA4 Voice';vb.style.background='var(--surface3)';vs.textContent='Idle';vs.className='stat'};
   R.onresult=e=>{
     const t=e.results[0][0].transcript;
-    const parsed=parseVoiceWeights(t);
-    if(parsed){weights=parsed;updateW();vs.textContent='Weights: '+JSON.stringify(weights);speakText('Weights updated')}
+    const parsed=parseWeightText(t);
+    if(parsed){weights=parsed;updateW();vs.textContent='Weights: '+JSON.stringify(weights);speakText('Weights updated');addControl('Voice weights: '+JSON.stringify(weights))}
     else{vs.textContent='Heard: '+t;chat(t)}
   };
   R.onerror=e=>{vs.textContent='Error: '+e.error;listening=0;vb.textContent='\uD83C\uDFA4 Voice';vb.style.background='var(--surface3)'};
@@ -193,7 +207,7 @@ vb.onclick=()=>{
 };
 
 refreshStats();updateW();updateHeatmap();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);
-add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?')
+add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights, or say it via voice.</span>')
 </script>
 </body>
 </html>

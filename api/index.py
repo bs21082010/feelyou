@@ -50,6 +50,10 @@ WEAK_REPLY_COUNT = 0
 LAST_SYNC_TIME = None
 ESCALATION_EVENTS: list = []
 LAST_SYNC_STATUS = "never"
+CONFLICT_RESOLUTIONS: list = []
+HOTSPOT_REINFORCED: set = set()
+WEAK_INTENT_COUNTER: dict = {}
+SYNC_COUNT = 0
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -253,6 +257,8 @@ async def chat_endpoint(req: ChatRequest):
             "intent": intent or "general",
             "timestamp": datetime.now().isoformat(),
         })
+        intent_key = intent or "general"
+        WEAK_INTENT_COUNTER[intent_key] = WEAK_INTENT_COUNTER.get(intent_key, 0) + 1
 
     if weights:
         normalize_weights(weights)
@@ -316,10 +322,18 @@ async def sync_status():
 
 @app.post("/api/sync")
 async def trigger_sync():
-    global LAST_SYNC_TIME, LAST_SYNC_STATUS
+    global LAST_SYNC_TIME, LAST_SYNC_STATUS, SYNC_COUNT
+    SYNC_COUNT += 1
     LAST_SYNC_TIME = datetime.now().isoformat()
     LAST_SYNC_STATUS = "synced"
-    return {"status": "ok", "synced_at": LAST_SYNC_TIME}
+    return {
+        "status": "ok",
+        "synced_at": LAST_SYNC_TIME,
+        "sync_count": SYNC_COUNT,
+        "total_scores": len(RECENT_SCORES),
+        "weak_count": WEAK_REPLY_COUNT,
+        "avg_confidence": round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None,
+    }
 
 
 @app.get("/api/weak-alert")
@@ -331,6 +345,51 @@ async def weak_alert():
         "threshold": threshold,
         "message": f"⚠️ {WEAK_REPLY_COUNT} weak repl{'y' if WEAK_REPLY_COUNT == 1 else 'ies'} detected. {'Consider retraining or adjusting persona.' if WEAK_REPLY_COUNT >= threshold else 'All good.'}" if WEAK_REPLY_COUNT >= threshold else None,
     }
+
+
+@app.get("/api/reinforce")
+async def reinforce_hotspots():
+    global HOTSPOT_REINFORCED
+    if not WEAK_INTENT_COUNTER:
+        return {"reinforced": False, "message": "No weak intents to reinforce."}
+    riskiest = max(WEAK_INTENT_COUNTER, key=WEAK_INTENT_COUNTER.get)
+    count = WEAK_INTENT_COUNTER[riskiest]
+    if count < 2 or riskiest in HOTSPOT_REINFORCED:
+        return {"reinforced": False, "message": f"Hotspot \"{riskiest}\" already reinforced or below threshold ({count})."}
+    HOTSPOT_REINFORCED.add(riskiest)
+    reinforcements = {
+        "motivate": "Motivate me to start a new habit. Respond with warmth and actionable steps.",
+        "explain": "Explain how to stay consistent with daily goals. Be clear and structured.",
+        "advise": "What should I do when I feel overwhelmed? Offer supportive advice.",
+    }
+    template = reinforcements.get(riskiest, f"Help me with {riskiest}. Be supportive and clear.")
+    reinforced = {
+        "intent": riskiest,
+        "count": count,
+        "template": template,
+    }
+    return {"reinforced": True, "message": f"Reinforced \"{riskiest}\" with few-shot example ({count} escalations).", "detail": reinforced}
+
+
+@app.get("/api/conflict-stats")
+async def conflict_stats():
+    total = len(CONFLICT_RESOLUTIONS)
+    methods = Counter(r["method"] for r in CONFLICT_RESOLUTIONS)
+    return {
+        "total": total,
+        "auto": methods.get("auto", 0),
+        "manual": methods.get("manual", 0),
+        "gui": methods.get("gui", 0),
+        "voice": methods.get("voice", 0),
+        "breakdown": dict(methods.most_common()) if total else {"none": 0},
+    }
+
+
+@app.post("/api/conflict-resolve")
+async def record_conflict_resolution(data: dict):
+    method = data.get("method", "manual")
+    CONFLICT_RESOLUTIONS.append({"method": method, "timestamp": datetime.now().isoformat()})
+    return {"status": "ok", "method": method}
 
 
 @app.get("/{path:path}")
