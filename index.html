@@ -63,6 +63,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Weights</label><div id="weights"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
@@ -77,7 +78,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 </div>
 <script>
 const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats');
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn');
 
 tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
 
@@ -127,15 +128,43 @@ function updateW(){
   })
 }
 
+async function refreshTraining(){
+  try{
+    const r=await fetch(API+'/training-history');const d=await r.json();
+    ts.innerHTML='Weak: <b>'+d.weak_count+'</b> \u22c5 Reinforce: <b>'+d.reinforce_count+'</b> \u22c5 Total: <b>'+d.total_events+'</b>';
+    tl.innerHTML=d.recent.slice(-5).reverse().map(e=>{
+      const t=new Date(e.timestamp).toLocaleTimeString();
+      if(e.type==='weak_reply') return '<span style="color:var(--red)">\u26A0</span> weak <b>'+e.score+'</b> ('+e.intent+') \u22c5 '+t;
+      if(e.type==='reinforce') return '<span style="color:var(--yellow)">\u26A1</span> reinforce <b>'+e.intent+'</b> \u22c5 '+t;
+      return ''
+    }).join('<br>')
+  }catch(e){ts.innerHTML='Offline'}
+}
+
+async function narrateTraining(){
+  try{
+    const r=await fetch(API+'/training-narration');const d=await r.json();
+    addControl('Training: '+d.narration);
+    speakText(d.narration)
+  }catch(e){}
+}
+
 async function refreshStats(){
   try{
-    const r2=await fetch(API+'/dashboard');const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> \u22c5 Recent: ['+d.recent_scores.slice(-5).join(',')+']';
-    const r3=await fetch(API+'/sync-status');const ds=await r3.json();
+    const [r2,r3,r4,r5]=await Promise.all([
+      fetch(API+'/dashboard'),
+      fetch(API+'/sync-status'),
+      fetch(API+'/weak-alert'),
+      fetch(API+'/conflict-stats')
+    ]);
+    const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> \u22c5 Recent: ['+d.recent_scores.slice(-5).join(',')+']';
+    const ds=await r3.json();
     ns.innerHTML='<span style="color:'+(ds.last_sync==='synced'?'var(--green)':'var(--red)')+'">\u25CF</span> '+ds.last_sync+(ds.last_sync_time?' \u22c5 '+new Date(ds.last_sync_time).toLocaleTimeString():'');
-    const r4=await fetch(API+'/weak-alert');const da=await r4.json();
+    const da=await r4.json();
     if(da.alert&&!alertShown.weak){ab.style.display='block';ab.textContent=da.message;alertShown.weak=1;speakText('Alert: '+da.message);setTimeout(()=>{ab.style.display='none'},8000)};
-    const r5=await fetch(API+'/conflict-stats');const dc=await r5.json();
+    const dc=await r5.json();
     if(dc.total){cs.innerHTML='Total: <b>'+dc.total+'</b> \u22c5 auto: '+dc.auto+' \u22c5 gui: '+dc.gui+' \u22c5 voice: '+dc.voice+' \u22c5 manual: '+dc.manual}
+    await refreshTraining()
   }catch(e){st.textContent='Offline'}
 }
 
@@ -172,12 +201,16 @@ s.onclick=()=>{
 };
 i.onkeydown=e=>{if(e.key==='Enter')s.click()};
 
+tn.onclick=narrateTraining;
+ctb.onclick=()=>{ts.innerHTML='Cleared';fetch(API+'/reset-training',{method:'POST'}).catch(()=>{})};
+
 nb.onclick=async()=>{
   try{
     const r2=await fetch(API+'/sync',{method:'POST'});const d=await r2.json();
     ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
     const nar=d.sync_count+' sync completed. '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence;
-    speakText(nar);addControl('Sync \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence)
+    speakText(nar);addControl('Sync \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence);
+    await narrateTraining()
   }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
 };
 
@@ -207,7 +240,7 @@ vb.onclick=()=>{
 };
 
 refreshStats();updateW();updateHeatmap();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);
-add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights, or say it via voice.</span>')
+add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights, or click <b>Narrate Training</b> for a spoken training summary.</span>')
 </script>
 </body>
 </html>

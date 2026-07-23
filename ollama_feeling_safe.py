@@ -834,8 +834,33 @@ def start_narration_scheduler(interval_minutes):
     threading.Thread(target=_loop, daemon=True).start()
 
 
+TRAINING_EVENTS = []  # list of dicts: {type, intent, score, count, timestamp}
+
+
+def speak_training_narration():
+    if not TRAINING_EVENTS:
+        speak_text("No training events recorded yet.")
+        return
+    weak = [e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]
+    reinforces = [e for e in TRAINING_EVENTS if e["type"] == "reinforce"]
+    parts = []
+    if weak:
+        parts.append(f"Total weak replies: {len(weak)}. Most recent score: {weak[-1]['score']}.")
+    if reinforces:
+        parts.append(f"Reinforcements applied: {len(reinforces)}. Last reinforced: {reinforces[-1]['intent']}.")
+    if not parts:
+        parts.append("No significant training events.")
+    parts.append(f"Total training events tracked: {len(TRAINING_EVENTS)}.")
+    summary = " ".join(parts)
+    print(f"   Training narration: {summary}")
+    speak_text(summary)
+
+
 def speak_analytics_trends():
     parts = []
+    if TRAINING_EVENTS:
+        weak = [e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]
+        parts.append(f"Training: {len(weak)} weak replies out of {len(TRAINING_EVENTS)} events.")
     if not os.path.exists(WEIGHT_LOG_PATH):
         speak_text("No weight history available.")
         return
@@ -1505,6 +1530,7 @@ def chat_with_voice(persona_name="mentor"):
                         weak_count = sum(1 for _ in f if _.strip())
                     speak_text(f"Retraining with {weak_count} weak examples.")
                     train_from_dataset()
+                    speak_training_narration()
                 else:
                     speak_text("No weak replies to retrain on.")
                 continue
@@ -1523,6 +1549,9 @@ def chat_with_voice(persona_name="mentor"):
             if cmd in ("export gold", "gold"):
                 export_gold_dataset()
                 speak_text("Gold dataset exported.")
+                continue
+            if cmd in ("narrate training", "training narration", "training summary"):
+                speak_training_narration()
                 continue
             if cmd in ("show cache", "cache stats"):
                 show_cache_stats()
@@ -1621,6 +1650,12 @@ def chat_with_voice(persona_name="mentor"):
                 CONSECUTIVE_LOW = CONSECUTIVE_LOW + 1 if score < 50 else 0
                 print(f"  [{score}/100]")
                 LAST_PROMPT, LAST_REPLY, LAST_SCORE = prompt, reply, score
+                TRAINING_EVENTS.append({
+                    "type": "weak_reply" if score < SCORE_THRESHOLD else "good_reply",
+                    "score": score,
+                    "intent": detect_intent(ui) or "general",
+                    "timestamp": datetime.now().isoformat(),
+                })
                 if score < 50:
                     append_to_weak(prompt, reply, score)
                     esc_intent = detect_intent(ui)

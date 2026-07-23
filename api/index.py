@@ -41,6 +41,8 @@ PROMPT_TEMPLATES = {
     "motivate": "Give me a motivational push about:\n\n{{query}}",
     "advise": "Offer supportive advice on:\n\n{{query}}",
 }
+TRAINING_EVENTS: list = []
+LAST_TRAINING_NARRATION = None
 RECENT_SCORES: list = []
 CONSECUTIVE_LOW = 0
 LAST_REPLY = None
@@ -241,8 +243,13 @@ async def chat_endpoint(req: ChatRequest):
 
     if score < 50:
         WEAK_REPLY_COUNT += 1
-
-    LAST_PROMPT = prompt if LAST_PROMPT is None else LAST_PROMPT
+        TRAINING_EVENTS.append({
+            "type": "weak_reply",
+            "score": score,
+            "intent": intent or "general",
+            "timestamp": datetime.now().isoformat(),
+            "weak_count": WEAK_REPLY_COUNT,
+        })
     LAST_REPLY = reply if LAST_REPLY is None else LAST_REPLY
     LAST_SCORE = score if LAST_SCORE is None else LAST_SCORE
 
@@ -347,6 +354,55 @@ async def weak_alert():
     }
 
 
+@app.get("/api/training-narration")
+async def training_narration():
+    global LAST_TRAINING_NARRATION
+    if not TRAINING_EVENTS:
+        return {"narration": "No training events recorded yet.", "events": []}
+    weak = [e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]
+    reinforces = [e for e in TRAINING_EVENTS if e["type"] == "reinforce"]
+    recent = TRAINING_EVENTS[-20:]
+    since_sync = [e for e in recent if LAST_SYNC_TIME is None or e.get("timestamp", "") >= LAST_SYNC_TIME]
+    parts = []
+    if weak:
+        recent_weak = [e for e in weak if LAST_SYNC_TIME is None or e.get("timestamp", "") >= LAST_SYNC_TIME]
+        if recent_weak:
+            parts.append(f"Since last sync: {len(recent_weak)} new weak replies. Most recent score: {recent_weak[-1]['score']} for intent '{recent_weak[-1]['intent']}'.")
+        else:
+            parts.append(f"No new weak replies since last sync. Total weak replies tracked: {len(weak)}.")
+    if reinforces:
+        recent_force = [e for e in reinforces if LAST_SYNC_TIME is None or e.get("timestamp", "") >= LAST_SYNC_TIME]
+        if recent_force:
+            parts.append(f"Since last sync: {len(recent_force)} reinforcements applied. Last reinforced intent: {recent_force[-1]['intent']}.")
+        else:
+            parts.append(f"Reinforcements applied historically: {len(reinforces)}. Last reinforced: {reinforces[-1]['intent']}.")
+    if not parts:
+        parts.append("No significant training events since last sync.")
+    parts.append(f"Total training events tracked: {len(TRAINING_EVENTS)}.")
+    narration = " ".join(parts)
+    LAST_TRAINING_NARRATION = narration
+    return {"narration": narration, "events": recent}
+
+
+@app.get("/api/training-history")
+async def training_history():
+    return {
+        "total_events": len(TRAINING_EVENTS),
+        "weak_count": len([e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]),
+        "reinforce_count": len([e for e in TRAINING_EVENTS if e["type"] == "reinforce"]),
+        "recent": TRAINING_EVENTS[-20:],
+    }
+
+
+@app.post("/api/reset-training")
+async def reset_training():
+    global TRAINING_EVENTS, LAST_TRAINING_NARRATION, WEAK_REPLY_COUNT
+    TRAINING_EVENTS.clear()
+    LAST_TRAINING_NARRATION = None
+    WEAK_REPLY_COUNT = 0
+    return {"status": "ok", "cleared": True}
+
+
 @app.get("/api/reinforce")
 async def reinforce_hotspots():
     global HOTSPOT_REINFORCED
@@ -368,6 +424,12 @@ async def reinforce_hotspots():
         "count": count,
         "template": template,
     }
+    TRAINING_EVENTS.append({
+        "type": "reinforce",
+        "intent": riskiest,
+        "count": count,
+        "timestamp": datetime.now().isoformat(),
+    })
     return {"reinforced": True, "message": f"Reinforced \"{riskiest}\" with few-shot example ({count} escalations).", "detail": reinforced}
 
 
