@@ -695,6 +695,30 @@ async def contributor_analytics():
     return {"analytics": analytics, "total_users": len(analytics)}
 
 
+@app.get("/api/contributor-narration")
+async def contributor_narration():
+    users = sorted(set(
+        list(CONTRIBUTORS.keys()) +
+        list(USER_WEAK_REPLIES.keys()) +
+        list(USER_GOLD_EXPORTS.keys())
+    ))
+    if not users:
+        return {"narration": "No contributor data recorded yet."}
+    parts = []
+    for uid in users:
+        syncs = CONTRIBUTORS.get(uid, {}).get("sync_count", 0)
+        conflicts = CONTRIBUTORS.get(uid, {}).get("conflict_count", 0)
+        weaks = USER_WEAK_REPLIES.get(uid, 0)
+        golds = USER_GOLD_EXPORTS.get(uid, 0)
+        st = f"{uid}: {syncs} syncs"
+        if conflicts: st += f", {conflicts} conflicts resolved"
+        if weaks: st += f", {weaks} weak replies flagged"
+        if golds: st += f", {golds} gold exports"
+        parts.append(st + ".")
+    narration = "Contributor analytics. " + " ".join(parts)
+    return {"narration": narration, "contributors": len(users)}
+
+
 @app.post("/api/conflict-resolve")
 async def record_conflict_resolution(data: dict, req: Request):
     user_id = req.headers.get("X-User-Id") or "anonymous"

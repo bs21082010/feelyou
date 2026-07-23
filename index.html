@@ -67,7 +67,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors</label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors <button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
@@ -82,7 +82,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 </div>
 <script>
 const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList'),sb=$('#simBtn'),sr=$('#simResults'),ss=$('#simBlendSelect'),sri=$('#simRounds'),abtn=$('#adaptiveBtn'),as_=$('#adaptiveStatus'),ah=$('#adaptiveHistory');
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList'),sb=$('#simBtn'),sr=$('#simResults'),ss=$('#simBlendSelect'),sri=$('#simRounds'),abtn=$('#adaptiveBtn'),as_=$('#adaptiveStatus'),ah=$('#adaptiveHistory'),ncb=$('#narrateContribBtn');
 let userId=localStorage.getItem('youfeel_user')||'';
 
 tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
@@ -171,6 +171,16 @@ async function narrateTraining(){
     speakText(d.narration)
   }catch(e){}
 }
+
+async function narrateContributors(){
+  try{
+    const r=await fetch(API+'/contributor-narration');const d=await r.json();
+    addControl('Contributors: '+d.narration);
+    speakText(d.narration)
+  }catch(e){}
+}
+
+ncb.onclick=narrateContributors;
 
 const CONTRIB_COLORS=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7'];
 
@@ -263,7 +273,7 @@ nb.onclick=async()=>{
     ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
     const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'.';
     speakText(nar);addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence);
-    await narrateTraining();await refreshContributors()
+    await narrateTraining();await narrateContributors();await refreshContributors()
   }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
 };
 

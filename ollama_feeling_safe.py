@@ -819,10 +819,14 @@ _last_drift_count = 0
 def start_narration_scheduler(interval_minutes):
     def _loop():
         global _last_drift_count
+        _narration_cycle = 0
         while True:
             time.sleep(interval_minutes * 60)
             if VOICE_ENGINE:
                 speak_analytics_trends()
+            _narration_cycle += 1
+            if _narration_cycle % 2 == 0:
+                speak_text(f"Current user: {USER_ID}. Sync stats for this session.")
             if os.path.exists(WEIGHT_LOG_PATH):
                 with open(WEIGHT_LOG_PATH, encoding="utf-8") as f:
                     history = [json.loads(line) for line in f if line.strip()]
@@ -1557,6 +1561,9 @@ def chat_with_voice(persona_name="mentor"):
                 continue
             if cmd in ("narrate training", "training narration", "training summary"):
                 speak_training_narration()
+                continue
+            if cmd in ("narrate contributors", "contributor summary", "contributor narration"):
+                speak_text(f"Contributor analytics. {USER_ID}: {len(TRAINING_EVENTS)} training events tracked.")
                 continue
             if cmd in ("show cache", "cache stats"):
                 show_cache_stats()
