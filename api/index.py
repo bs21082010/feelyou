@@ -554,6 +554,60 @@ async def adaptive_status():
 
 load_fewshot()
 
+ESCALATION_REINFORCED: set = set()
+ESCALATION_TEMPLATES = {
+    "motivate": {"prompt": "I keep failing and I'm losing motivation completely.", "completion": "Failure is not the opposite of success — it's part of it. Let's look at what you've learned from this attempt, not just what went wrong. What's one small thing you could try differently next time? You're building resilience with every setback."},
+    "explain": {"prompt": "I've read this three times and I still don't understand it at all.", "completion": "Let's try a completely different approach. Forget what you've read — let me show you with a real-world example you already understand. Think about something you know well, and I'll map the new concept onto it. Sometimes the frame of reference matters more than the explanation itself."},
+    "advise": {"prompt": "Every option I consider seems terrible. I'm completely stuck.", "completion": "When every path feels wrong, it's usually because you're putting too much pressure on yourself to find the 'right' answer. Let me suggest something counterintuitive: pick the option that feels the least harmful, not the best. Sometimes unblocking yourself matters more than optimizing. You can course-correct later."},
+    "general": {"prompt": "Nothing is working and I don't know what to do anymore.", "completion": "I hear how heavy this feels. Let me suggest something small but concrete: stop trying to solve everything at once. Pick one tiny thing you can control right now — literally one small action — and do only that. Progress is rebuilt one small win at a time, and you've already taken the first step by reaching out."},
+}
+
+
+@app.post("/api/escalation-reinforce")
+async def escalation_reinforce(data: dict = {}):
+    global ESCALATION_REINFORCED
+    if not ESCALATION_EVENTS:
+        return {"reinforced": 0, "message": "No escalation events to analyze."}
+    pattern_counts = Counter((e["intent"], e["tier"]) for e in ESCALATION_EVENTS)
+    added = []
+    for (intent, tier), count in sorted(pattern_counts.items(), key=lambda x: -x[1]):
+        key = f"{intent}_tier{tier}"
+        if key in ESCALATION_REINFORCED:
+            continue
+        if count < 2:
+            continue
+        template = ESCALATION_TEMPLATES.get(intent, ESCALATION_TEMPLATES["general"])
+        entry = {
+            "intent": intent,
+            "tier": tier,
+            "escalation_count": count,
+            "pattern": key,
+            "prompt": template["prompt"],
+            "completion": template["completion"],
+            "generated_at": datetime.now().isoformat(),
+        }
+        FEWSHOT_DATASET.append(entry)
+        ESCALATION_REINFORCED.add(key)
+        ADAPTIVE_HISTORY.append({**entry, "type": "escalation_reinforce"})
+        added.append(entry)
+    save_fewshot()
+    if added:
+        messages = [f"Escalation-reinforced '{a['intent']}' tier {a['tier']} ({a['escalation_count']} events)." for a in added]
+    else:
+        messages = ["No escalation patterns to reinforce — all covered or below threshold."]
+    return {"reinforced": len(added), "total_fewshot": len(FEWSHOT_DATASET), "messages": messages, "added": [{"intent": a["intent"], "tier": a["tier"], "count": a["escalation_count"]} for a in added]}
+
+
+@app.get("/api/escalation-status")
+async def escalation_status():
+    patterns = Counter((e["intent"], e["tier"]) for e in ESCALATION_EVENTS)
+    return {
+        "total_events": len(ESCALATION_EVENTS),
+        "patterns": [{"intent": k[0], "tier": k[1], "count": v} for k, v in patterns.most_common()],
+        "reinforced_patterns": sorted(ESCALATION_REINFORCED),
+        "reinforced_count": len(ESCALATION_REINFORCED),
+    }
+
 
 @app.get("/api/conflict-stats")
 async def conflict_stats():
@@ -644,6 +698,56 @@ async def run_simulation(data: dict):
             "rounds_data": rounds_data,
         })
     return {"results": results, "rounds": rounds, "total_prompts": rounds * len(blends)}
+
+
+@app.post("/api/federated-simulate")
+async def federated_simulate(data: dict):
+    rounds = data.get("rounds", 8)
+    users = sorted(set(
+        list(CONTRIBUTORS.keys()) +
+        list(USER_WEAK_REPLIES.keys()) +
+        list(USER_GOLD_EXPORTS.keys())
+    ))
+    if not users:
+        return {"results": [], "rounds": rounds, "message": "No contributors to simulate."}
+    user_results = []
+    for uid in users:
+        c = CONTRIBUTORS.get(uid, {})
+        blends = DEFAULT_SIMULATION_BLENDS
+        if c.get("sync_count", 0) > 0:
+            blends = DEFAULT_SIMULATION_BLENDS[:3]
+        scores = []
+        total_escs = 0
+        total_weaks = 0
+        intents = Counter()
+        for blend in blends:
+            dy = dict(blend.get("weights", {}))
+            for i in range(rounds):
+                prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
+                reply = generate_mock_reply(prompt, blend["persona"])
+                score = score_reply(reply)
+                scores.append(score)
+                intent = detect_intent(prompt)
+                if intent:
+                    intents[intent] += 1
+                if score < 50:
+                    total_weaks += 1
+                if score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:]):
+                    total_escs += 1
+        total_prompts = rounds * len(blends)
+        user_results.append({
+            "user_id": uid,
+            "sync_count": c.get("sync_count", 0),
+            "conflict_count": c.get("conflict_count", 0),
+            "weak_replies": USER_WEAK_REPLIES.get(uid, 0),
+            "gold_exports": USER_GOLD_EXPORTS.get(uid, 0),
+            "sim_avg_confidence": round(sum(scores) / len(scores), 1) if scores else 0,
+            "sim_escalations": total_escs,
+            "sim_weak_ratio": f"{round(total_weaks / total_prompts * 100, 1)}%" if total_prompts else "0%",
+            "sim_weak_count": total_weaks,
+            "sim_best_intent": intents.most_common(1)[0][0] if intents else "none",
+        })
+    return {"results": user_results, "rounds": rounds, "total_users": len(users)}
 
 
 @app.post("/api/gold-export")

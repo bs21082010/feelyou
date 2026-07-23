@@ -1778,12 +1778,49 @@ def simulate_persona(rounds=10, blends=None):
 
 
 ADAPTIVE_REINFORCED = set()
+ESCALATION_REINFORCED_CLI = set()
 CLI_FEWSHOT_TEMPLATES = {
     "motivate": {"prompt": "I'm feeling really down and need motivation to keep going.", "completion": "I hear you. It's completely okay to have days where you feel low. What matters is that you're still here. Let's take one small step together."},
     "explain": {"prompt": "Can you explain this to me like I'm five years old?", "completion": "Of course! Let me start with the simplest way to think about it. The core idea is really just one small concept, and once that clicks, everything else builds on it naturally."},
     "advise": {"prompt": "I'm stuck between two choices and don't know what to do.", "completion": "That feeling of being stuck is common. Let's break this down. What does your gut tell you? Which option aligns with your long-term values? You don't need the perfect answer."},
     "general": {"prompt": "I don't know what to do with my life.", "completion": "That's a deeply honest question. You don't need to have it all figured out today. What if we focused on just the next season? What would feel meaningful to explore?"},
 }
+
+
+CLI_ESCALATION_TEMPLATES = {
+    "motivate": {"prompt": "I keep failing and I'm losing motivation completely.", "completion": "Failure is not the opposite of success — it's part of it. Let's look at what you've learned. What's one small thing you could try differently?"},
+    "explain": {"prompt": "I've read this three times and I still don't understand.", "completion": "Let's try a completely different approach. Forget what you've read — let me show you with a real-world example you already understand."},
+    "advise": {"prompt": "Every option I consider seems terrible. I'm completely stuck.", "completion": "When every path feels wrong, pick the option that feels the least harmful. Sometimes unblocking yourself matters more than finding the perfect answer."},
+    "general": {"prompt": "Nothing is working and I don't know what to do anymore.", "completion": "Stop trying to solve everything at once. Pick one tiny thing you can control right now and do only that. Progress is rebuilt one small win at a time."},
+}
+
+
+def escalation_reinforce_cli():
+    if not os.path.exists(ESCALATION_LOG_PATH):
+        print("No escalation log found.")
+        return
+    with open(ESCALATION_LOG_PATH, encoding="utf-8") as f:
+        events = [json.loads(line) for line in f if line.strip()]
+    if not events:
+        print("No escalation events.")
+        return
+    patterns = Counter((e.get("intent", "general"), e.get("tier", 1)) for e in events)
+    added = 0
+    for (intent, tier), count in patterns.most_common():
+        key = f"{intent}_tier{tier}"
+        if key in ESCALATION_REINFORCED_CLI or count < 2:
+            continue
+        ESCALATION_REINFORCED_CLI.add(key)
+        t = CLI_ESCALATION_TEMPLATES.get(intent, CLI_ESCALATION_TEMPLATES["general"])
+        entry = {"intent": intent, "tier": tier, "escalation_count": count, "prompt": t["prompt"],
+                 "completion": t["completion"], "generated_at": datetime.now().isoformat()}
+        with open("fewshot_dataset.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+        print(f"   Escalation-reinforced '{intent}' tier {tier} ({count} events)")
+        added += 1
+    if not added:
+        print("   No escalation patterns to reinforce.")
+    return added
 
 
 def adaptive_reinforce(rounds=8, threshold=30):
@@ -1846,11 +1883,17 @@ if __name__ == "__main__":
             rounds = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) and sys.argv[i + 1].isdigit() else 8
             if rounds != 8: i += 1
             adaptive_reinforce(rounds=rounds); sys.exit(0)
+        elif a == "--federated-simulate":
+            rounds = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) and sys.argv[i + 1].isdigit() else 8
+            if rounds != 8: i += 1
+            simulate_persona(rounds=rounds); sys.exit(0)
         elif a == "--simulate":
             rounds = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) and sys.argv[i + 1].isdigit() else 10
             if rounds != 10: i += 1
             simulate_persona(rounds=rounds); sys.exit(0)
         elif a == "--reinforce": reinforce_hotspots(); sys.exit(0)
+        elif a == "--escalation-reinforce":
+            escalation_reinforce_cli(); sys.exit(0)
         else: rest.append(a); i += 1
     sys.argv = [sys.argv[0]] + rest
     if narrate_enabled and voice_enabled:
