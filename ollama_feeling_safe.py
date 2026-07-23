@@ -1694,6 +1694,82 @@ def chat_with_voice(persona_name="mentor"):
         speak_text("Interrupted.")
 
 
+SIMULATION_PROMPTS = [
+    "I'm feeling a bit lost today. Can you help me find direction?",
+    "How do I stay motivated when things get hard?",
+    "Explain the concept of compounding interest to me.",
+    "What should I do if I'm not sure about my career path?",
+    "Tell me how to build a daily workout routine.",
+    "I need advice on handling stress at work.",
+    "What is the best way to learn a new skill?",
+    "Encourage me to start that project I've been putting off.",
+    "Can you explain why the sky is blue?",
+    "Should I quit my job and start my own business?",
+    "How does machine learning actually work?",
+    "Give me a push to wake up early every day.",
+    "I'm overwhelmed with choices. What should I focus on?",
+    "Help me understand the difference between stocks and bonds.",
+    "Motivate me to study for my exams.",
+    "What would you recommend for someone feeling lonely?",
+    "Describe how photosynthesis works in simple terms.",
+    "I need a plan to get out of debt.",
+    "Inspire me to write that book I've been dreaming about.",
+    "Should I invest in real estate or the stock market?",
+]
+
+
+def simulate_persona(rounds=10, blends=None):
+    if blends is None:
+        blends = [
+            {"name": "Mentor only", "persona": "mentor", "weights": {"mentor": 100, "coach": 0, "teacher": 0}},
+            {"name": "Coach only", "persona": "coach", "weights": {"mentor": 0, "coach": 100, "teacher": 0}},
+            {"name": "Teacher only", "persona": "teacher", "weights": {"mentor": 0, "coach": 0, "teacher": 100}},
+            {"name": "Balanced", "persona": "mentor:34+coach:33+teacher:33", "weights": {"mentor": 34, "coach": 33, "teacher": 33}},
+            {"name": "Mentor-heavy", "persona": "mentor:60+coach:20+teacher:20", "weights": {"mentor": 60, "coach": 20, "teacher": 20}},
+        ]
+    results = []
+    for blend in blends:
+        scores = []
+        escalations = 0
+        weaks = 0
+        intents = Counter()
+        dy_weights = dict(blend.get("weights", {}))
+        for i in range(rounds):
+            prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
+            personal = build_persona(blend["persona"], dy_weights)
+            reply = generate_mock_reply(prompt, blend["persona"])
+            score = score_reply(reply)
+            scores.append(score)
+            intent = detect_intent(prompt)
+            if intent:
+                intents[intent] += 1
+            if score < 50:
+                weaks += 1
+            if score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:]):
+                escalations += 1
+        avg_c = round(sum(scores) / len(scores), 1) if scores else 0
+        results.append({
+            "name": blend["name"],
+            "avg_confidence": avg_c,
+            "escalations": escalations,
+            "weak_ratio": f"{round(weaks / rounds * 100, 1)}%",
+            "weak_count": weaks,
+            "best_intent": intents.most_common(1)[0][0] if intents else "none",
+        })
+    sep = "-" * 72
+    print()
+    print("  Persona Simulation Results")
+    print(sep)
+    print(f"  {'Blend':<22} {'Avg Conf':>9} {'Escal.':>7} {'Weak%':>7} {'Weak#':>6} {'Top Intent':<14}")
+    print(sep)
+    for r in results:
+        print(f"  {r['name']:<22} {r['avg_confidence']:>8.1f}% {r['escalations']:>7} {r['weak_ratio']:>7} {r['weak_count']:>6} {r['best_intent']:<14}")
+    print(sep)
+    print(f"  Prompts per blend: {rounds}  |  Total prompts: {rounds * len(blends)}")
+    print()
+    return results
+
+
 if __name__ == "__main__":
     persona_name, sync_target, merge_policy, voice_enabled, gui_enabled, narrate_enabled = "mentor", None, "highest", False, False, False
     global USER_ID
@@ -1724,6 +1800,10 @@ if __name__ == "__main__":
             if f: print(f"Suggested blend: {f}")
             else: print("Not enough data.")
             sys.exit(0)
+        elif a == "--simulate":
+            rounds = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) and sys.argv[i + 1].isdigit() else 10
+            if rounds != 10: i += 1
+            simulate_persona(rounds=rounds); sys.exit(0)
         elif a == "--reinforce": reinforce_hotspots(); sys.exit(0)
         else: rest.append(a); i += 1
     sys.argv = [sys.argv[0]] + rest

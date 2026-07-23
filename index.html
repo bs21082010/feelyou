@@ -64,6 +64,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button></div><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors</label><div id="contributorList" class="stat">No contributors</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
@@ -80,7 +81,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 </div>
 <script>
 const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList');
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList'),sb=$('#simBtn'),sr=$('#simResults'),ss=$('#simBlendSelect'),sri=$('#simRounds');
 let userId=localStorage.getItem('youfeel_user')||'';
 
 tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
@@ -256,6 +257,34 @@ nh.onclick=async()=>{
 rb.onclick=async()=>{
   try{const r2=await fetch(API+'/reinforce');const d=await r2.json();addControl(d.message);speakText(d.message)}catch(e){}
 };
+
+sb.onclick=async()=>{
+  const rounds=parseInt(sri.value)||10;
+  const blendVal=ss.value;
+  const blends=blendVal==='all'?null:[{name:ss.options[ss.selectedIndex].text,persona:blendVal,weights:parseBlendWeights(blendVal)}];
+  sr.innerHTML='Running simulation...';
+  addControl('Simulation started: '+rounds+' rounds x '+(blends?1:5)+' blends');
+  try{
+    const r=await fetch(API+'/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds,blends})});
+    const d=await r.json();
+    let html='<div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:2px 6px;font-size:10px">';
+    html+='<b>Blend</b><b style="text-align:right">Avg</b><b style="text-align:right">Esc</b><b style="text-align:right">Weak%</b><b style="text-align:right">Intent</b>';
+    d.results.forEach(res=>{
+      html+='<span>'+res.name+'</span>';
+      html+='<span style="text-align:right;color:'+(res.avg_confidence>=70?'var(--green)':res.avg_confidence>=50?'var(--yellow)':'var(--red)')+'">'+res.avg_confidence+'%</span>';
+      html+='<span style="text-align:right">'+res.escalations+'</span>';
+      html+='<span style="text-align:right;color:'+(parseFloat(res.weak_ratio)<20?'var(--green)':parseFloat(res.weak_ratio)<40?'var(--yellow)':'var(--red)')+'">'+res.weak_ratio+'</span>';
+      html+='<span style="text-align:right;color:var(--text2)">'+res.best_intent+'</span>'
+    });
+    html+='</div>';
+    sr.innerHTML=html;
+    addControl('Simulation done: '+d.total_prompts+' prompts across '+(blends?1:5)+' blends')
+  }catch(e){sr.innerHTML='Error: '+e.message}
+};
+
+function parseBlendWeights(val){
+  const w={};val.split('+').forEach(p=>{const[m,n]=p.split(':');if(m&&n)w[m]=parseInt(n)});return w
+}
 
 vb.onclick=()=>{
   if(listening){R&&R.stop();return}

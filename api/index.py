@@ -469,6 +469,73 @@ async def conflict_stats():
     }
 
 
+SIMULATION_PROMPTS = [
+    "I'm feeling a bit lost today. Can you help me find direction?",
+    "How do I stay motivated when things get hard?",
+    "Explain the concept of compounding interest to me.",
+    "What should I do if I'm not sure about my career path?",
+    "Tell me how to build a daily workout routine.",
+    "I need advice on handling stress at work.",
+    "What is the best way to learn a new skill?",
+    "Encourage me to start that project I've been putting off.",
+    "Can you explain why the sky is blue?",
+    "Should I quit my job and start my own business?",
+    "How does machine learning actually work?",
+    "Give me a push to wake up early every day.",
+    "I'm overwhelmed with choices. What should I focus on?",
+    "Help me understand the difference between stocks and bonds.",
+    "Motivate me to study for my exams.",
+    "What would you recommend for someone feeling lonely?",
+    "Describe how photosynthesis works in simple terms.",
+    "I need a plan to get out of debt.",
+    "Inspire me to write that book I've been dreaming about.",
+    "Should I invest in real estate or the stock market?",
+]
+
+DEFAULT_SIMULATION_BLENDS = [
+    {"name": "Mentor only", "persona": "mentor", "weights": {"mentor": 100, "coach": 0, "teacher": 0}},
+    {"name": "Coach only", "persona": "coach", "weights": {"mentor": 0, "coach": 100, "teacher": 0}},
+    {"name": "Teacher only", "persona": "teacher", "weights": {"mentor": 0, "coach": 0, "teacher": 100}},
+    {"name": "Balanced", "persona": "mentor:34+coach:33+teacher:33", "weights": {"mentor": 34, "coach": 33, "teacher": 33}},
+    {"name": "Mentor-heavy", "persona": "mentor:60+coach:20+teacher:20", "weights": {"mentor": 60, "coach": 20, "teacher": 20}},
+]
+
+
+@app.post("/api/simulate")
+async def run_simulation(data: dict):
+    rounds = data.get("rounds", 10)
+    blends = data.get("blends") or DEFAULT_SIMULATION_BLENDS
+    results = []
+    for blend in blends:
+        scores = []
+        escalations = 0
+        weaks = 0
+        intents = Counter()
+        dy_weights = dict(blend.get("weights", {}))
+        for i in range(rounds):
+            prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
+            reply = generate_mock_reply(prompt, blend["persona"])
+            score = score_reply(reply)
+            scores.append(score)
+            intent = detect_intent(prompt)
+            if intent:
+                intents[intent] += 1
+            if score < 50:
+                weaks += 1
+            if score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:]):
+                escalations += 1
+        results.append({
+            "name": blend["name"],
+            "avg_confidence": round(sum(scores) / len(scores), 1) if scores else 0,
+            "escalations": escalations,
+            "weak_ratio": f"{round(weaks / rounds * 100, 1)}%",
+            "weak_count": weaks,
+            "best_intent": intents.most_common(1)[0][0] if intents else "none",
+            "persona": blend["persona"],
+        })
+    return {"results": results, "rounds": rounds, "total_prompts": rounds * len(blends)}
+
+
 @app.get("/api/contributors")
 async def get_contributors():
     return {
