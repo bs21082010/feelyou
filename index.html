@@ -64,7 +64,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button></div><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors</label><div id="contributorList" class="stat">No contributors</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
@@ -258,16 +258,71 @@ rb.onclick=async()=>{
   try{const r2=await fetch(API+'/reinforce');const d=await r2.json();addControl(d.message);speakText(d.message)}catch(e){}
 };
 
+const SIM_COLORS=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7'];
+
+function drawSimChart(canvas, results, rounds){
+  const ctx=canvas.getContext('2d');
+  const W=canvas.parentElement.clientWidth-4||260,H=140;
+  canvas.width=W*2;canvas.height=H*2;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  ctx.scale(2,2);
+  const pad={t:16,b:16,l:32,r:12};
+  const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='var(--text3)';ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='8px sans-serif';
+  for(let i=0;i<=4;i++){
+    const y=pad.t+ch-(i/4*ch),v=Math.round(100-i*25);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
+    ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v+'%',pad.l-4,y+3)
+  }
+  ctx.fillStyle='var(--text3)';ctx.textAlign='center';
+  for(let i=0;i<rounds&&i<20;i++){
+    const x=pad.l+(i/(Math.min(rounds,20)-1||1))*cw;
+    if(i%2===0){ctx.fillText(i+1,x,pad.t+ch+10)}
+  }
+  results.forEach((res,bi)=>{
+    const rd=res.rounds_data||[];
+    const step=rd.length>1?cw/(rd.length-1):0;
+    ctx.beginPath();ctx.strokeStyle=SIM_COLORS[bi%SIM_COLORS.length];ctx.lineWidth=1.5;
+    rd.forEach((r,i)=>{
+      const x=pad.l+i*step,y=pad.t+ch-(r.score/100*ch);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+    });
+    ctx.stroke();
+    rd.forEach((r,i)=>{
+      const x=pad.l+i*step,y=pad.t+ch-(r.score/100*ch);
+      if(r.escalated){
+        ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
+        ctx.fillStyle='var(--red)';ctx.fill()
+      }else{
+        ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);
+        ctx.fillStyle=SIM_COLORS[bi%SIM_COLORS.length];ctx.fill()
+      }
+    })
+  });
+  ctx.fillStyle='var(--text3)';ctx.font='8px sans-serif';ctx.textAlign='left';
+  results.forEach((res,bi)=>{
+    const x=pad.l+bi*52,y=pad.t-4;
+    ctx.fillStyle=SIM_COLORS[bi%SIM_COLORS.length];
+    ctx.fillRect(x,y-2,6,6);
+    ctx.fillStyle='var(--text3)';ctx.fillText(res.name.substr(0,8),x+8,y+2)
+  });
+  canvas.style.display='block'
+}
+
 sb.onclick=async()=>{
   const rounds=parseInt(sri.value)||10;
   const blendVal=ss.value;
   const blends=blendVal==='all'?null:[{name:ss.options[ss.selectedIndex].text,persona:blendVal,weights:parseBlendWeights(blendVal)}];
-  sr.innerHTML='Running simulation...';
+  const canvas=$('#simCanvas');
+  canvas.style.display='none';
+  sr.innerHTML='Running simulation <span style="color:var(--yellow)">\u25CF</span>';
   addControl('Simulation started: '+rounds+' rounds x '+(blends?1:5)+' blends');
   try{
     const r=await fetch(API+'/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds,blends})});
     const d=await r.json();
-    let html='<div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:2px 6px;font-size:10px">';
+    drawSimChart(canvas,d.results,rounds);
+    let html='<div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:2px 6px;font-size:10px;margin-top:4px">';
     html+='<b>Blend</b><b style="text-align:right">Avg</b><b style="text-align:right">Esc</b><b style="text-align:right">Weak%</b><b style="text-align:right">Intent</b>';
     d.results.forEach(res=>{
       html+='<span>'+res.name+'</span>';
@@ -276,7 +331,7 @@ sb.onclick=async()=>{
       html+='<span style="text-align:right;color:'+(parseFloat(res.weak_ratio)<20?'var(--green)':parseFloat(res.weak_ratio)<40?'var(--yellow)':'var(--red)')+'">'+res.weak_ratio+'</span>';
       html+='<span style="text-align:right;color:var(--text2)">'+res.best_intent+'</span>'
     });
-    html+='</div>';
+    html+='</div><div style="font-size:9px;color:var(--text3);margin-top:2px">'+d.total_prompts+' total prompts &bull; red dots = escalation</div>';
     sr.innerHTML=html;
     addControl('Simulation done: '+d.total_prompts+' prompts across '+(blends?1:5)+' blends')
   }catch(e){sr.innerHTML='Error: '+e.message}

@@ -511,19 +511,23 @@ async def run_simulation(data: dict):
         escalations = 0
         weaks = 0
         intents = Counter()
+        rounds_data = []
         dy_weights = dict(blend.get("weights", {}))
         for i in range(rounds):
             prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
             reply = generate_mock_reply(prompt, blend["persona"])
             score = score_reply(reply)
-            scores.append(score)
             intent = detect_intent(prompt)
+            scores.append(score)
             if intent:
                 intents[intent] += 1
+            escalated = False
             if score < 50:
                 weaks += 1
             if score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:]):
                 escalations += 1
+                escalated = True
+            rounds_data.append({"round": i + 1, "score": score, "escalated": escalated, "intent": intent or "none"})
         results.append({
             "name": blend["name"],
             "avg_confidence": round(sum(scores) / len(scores), 1) if scores else 0,
@@ -532,6 +536,7 @@ async def run_simulation(data: dict):
             "weak_count": weaks,
             "best_intent": intents.most_common(1)[0][0] if intents else "none",
             "persona": blend["persona"],
+            "rounds_data": rounds_data,
         })
     return {"results": results, "rounds": rounds, "total_prompts": rounds * len(blends)}
 
