@@ -64,9 +64,10 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors</label><div id="contributorList" class="stat">No contributors</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors</label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
@@ -81,7 +82,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 </div>
 <script>
 const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList'),sb=$('#simBtn'),sr=$('#simResults'),ss=$('#simBlendSelect'),sri=$('#simRounds');
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList'),sb=$('#simBtn'),sr=$('#simResults'),ss=$('#simBlendSelect'),sri=$('#simRounds'),abtn=$('#adaptiveBtn'),as_=$('#adaptiveStatus'),ah=$('#adaptiveHistory');
 let userId=localStorage.getItem('youfeel_user')||'';
 
 tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
@@ -171,12 +172,28 @@ async function narrateTraining(){
   }catch(e){}
 }
 
+const CONTRIB_COLORS=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7'];
+
 async function refreshContributors(){
   try{
-    const r=await fetch(API+'/contributors');const d=await r.json();
-    if(d.contributors.length){
-      cl.innerHTML=d.contributors.map(c=>'<span style="color:'+(c.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(c.last_sync?'\uD83D\uDFE2 ':'\uD83D\uDD34 ')+c.user_id+'</span> sync:'+c.sync_count+' conflict:'+c.conflict_count).join(' &middot; ')
-    }
+    const r=await fetch(API+'/contributor-analytics');const d=await r.json();
+    if(!d.analytics.length){cl.innerHTML='No contributors';return}
+    const cc=$('#contributorChart');
+    cl.innerHTML=d.analytics.map((u,i)=>{
+      const c=CONTRIB_COLORS[i%CONTRIB_COLORS.length];
+      const isMe=u.user_id===userId;
+      return '<span style="color:'+(isMe?'var(--blue)':'var(--text2)')+'">'+(u.last_sync?'\u25CF ':'\u25CB ')+'<b>'+u.user_id+'</b></span> sync:'+u.sync_count+' \u2694\uFE0F:'+u.conflict_count+' \u26A0:'+u.weak_replies+' \u2B50:'+u.gold_exports
+    }).join(' &middot; ');
+    const maxVal=Math.max(...d.analytics.map(u=>Math.max(u.conflict_count,u.weak_replies,u.gold_exports,u.sync_count)),1);
+    cc.style.display='block';
+    const barH=Math.min(d.analytics.length*12,60);
+    cc.style.height=barH+'px';
+    cc.innerHTML='<div style="display:flex;gap:8px;height:100%;align-items:flex-end">'+d.analytics.map((u,i)=>{
+      const c=CONTRIB_COLORS[i%CONTRIB_COLORS.length];
+      const label=u.user_id.length>6?u.user_id.substr(0,5)+'\u2026':u.user_id;
+      const h=Math.round((u.sync_count/maxVal)*100);
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end"><div title="'+u.user_id+': '+u.sync_count+' syncs, '+u.conflict_count+' conflicts, '+u.weak_replies+' weak, '+u.gold_exports+' gold" style="width:100%;background:'+c+';height:'+h+'%;min-height:4px;border-radius:2px 2px 0 0;opacity:'+(u.user_id===userId?'1':'0.6')+'"></div><span style="font-size:7px;color:var(--text3);margin-top:1px">'+label+'</span></div>'
+    }).join('')+'</div>'
   }catch(e){cl.innerHTML='Offline'}
 }
 
@@ -341,6 +358,27 @@ function parseBlendWeights(val){
   const w={};val.split('+').forEach(p=>{const[m,n]=p.split(':');if(m&&n)w[m]=parseInt(n)});return w
 }
 
+async function refreshAdaptive(){
+  try{
+    const r=await fetch(API+'/adaptive-status');const d=await r.json();
+    as_.innerHTML='Few-shot: <b>'+d.total_fewshot+'</b> &bull; Intents: <b>'+(d.intents_covered.join(', ')||'none')+'</b>';
+    ah.innerHTML=d.history.slice(-3).reverse().map(e=>'<span style="color:var(--yellow)">\u26A1</span> auto-reinforced <b>'+e.intent+'</b> ('+e.weak_rate+'% weak) &bull; '+new Date(e.generated_at).toLocaleTimeString()).join('<br>')
+  }catch(e){as_.innerHTML='Offline'}
+}
+
+abtn.onclick=async()=>{
+  abtn.disabled=1;abtn.textContent='Running...';
+  as_.innerHTML='<span style="color:var(--yellow)">\u25CF</span> Running simulation...';
+  try{
+    const r=await fetch(API+'/adaptive-reinforce',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    if(d.reinforced>0){addControl('Adaptive: '+d.messages.join(' '));speakText(d.messages.join(' '))}
+    else addControl('Adaptive: all intents already reinforced');
+    await refreshAdaptive()
+  }catch(e){as_.innerHTML='Error: '+e.message}
+  abtn.disabled=0;abtn.textContent='\u26A1 Auto-Reinforce'
+};
+
 vb.onclick=()=>{
   if(listening){R&&R.stop();return}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -358,7 +396,7 @@ vb.onclick=()=>{
   R.start()
 };
 
-refreshStats();updateW();updateHeatmap();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);
+refreshStats();updateW();updateHeatmap();refreshAdaptive();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);setInterval(refreshAdaptive,20000);setInterval(refreshContributors,25000);
 add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights, or click <b>Narrate Training</b> for a spoken training summary.</span>')
 </script>
 </body>

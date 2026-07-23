@@ -1770,6 +1770,41 @@ def simulate_persona(rounds=10, blends=None):
     return results
 
 
+ADAPTIVE_REINFORCED = set()
+CLI_FEWSHOT_TEMPLATES = {
+    "motivate": {"prompt": "I'm feeling really down and need motivation to keep going.", "completion": "I hear you. It's completely okay to have days where you feel low. What matters is that you're still here. Let's take one small step together."},
+    "explain": {"prompt": "Can you explain this to me like I'm five years old?", "completion": "Of course! Let me start with the simplest way to think about it. The core idea is really just one small concept, and once that clicks, everything else builds on it naturally."},
+    "advise": {"prompt": "I'm stuck between two choices and don't know what to do.", "completion": "That feeling of being stuck is common. Let's break this down. What does your gut tell you? Which option aligns with your long-term values? You don't need the perfect answer."},
+    "general": {"prompt": "I don't know what to do with my life.", "completion": "That's a deeply honest question. You don't need to have it all figured out today. What if we focused on just the next season? What would feel meaningful to explore?"},
+}
+
+
+def adaptive_reinforce(rounds=8, threshold=30):
+    intents_weak = defaultdict(int)
+    for i in range(rounds):
+        prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
+        reply = generate_mock_reply(prompt, "mentor")
+        score = score_reply(reply)
+        if score < 50:
+            intent = detect_intent(prompt) or "general"
+            intents_weak[intent] += 1
+    added = []
+    for intent, count in sorted(intents_weak.items(), key=lambda x: -x[1]):
+        pct = (count / rounds) * 100
+        if pct >= threshold and intent not in ADAPTIVE_REINFORCED:
+            ADAPTIVE_REINFORCED.add(intent)
+            t = CLI_FEWSHOT_TEMPLATES.get(intent, CLI_FEWSHOT_TEMPLATES["general"])
+            entry = {"intent": intent, "prompt": t["prompt"], "completion": t["completion"],
+                     "generated_at": datetime.now().isoformat(), "weak_rate": round(pct, 1)}
+            with open("fewshot_dataset.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+            print(f"   Auto-reinforced '{intent}' (weak rate {pct:.1f}%)")
+            added.append(intent)
+    if not added:
+        print("   All intents already reinforced or below threshold.")
+    return added
+
+
 if __name__ == "__main__":
     persona_name, sync_target, merge_policy, voice_enabled, gui_enabled, narrate_enabled = "mentor", None, "highest", False, False, False
     global USER_ID
@@ -1800,6 +1835,10 @@ if __name__ == "__main__":
             if f: print(f"Suggested blend: {f}")
             else: print("Not enough data.")
             sys.exit(0)
+        elif a == "--adaptive-reinforce":
+            rounds = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) and sys.argv[i + 1].isdigit() else 8
+            if rounds != 8: i += 1
+            adaptive_reinforce(rounds=rounds); sys.exit(0)
         elif a == "--simulate":
             rounds = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) and sys.argv[i + 1].isdigit() else 10
             if rounds != 10: i += 1

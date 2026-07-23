@@ -59,6 +59,13 @@ SYNC_COUNT = 0
 SYNC_HISTORY_BY_USER: dict = defaultdict(list)
 USER_CONFLICTS: dict = defaultdict(list)
 CONTRIBUTORS: dict = {}
+FEWSHOT_DATASET: list = []
+AUTO_REINFORCED_INTENTS: set = set()
+ADAPTIVE_HISTORY: list = []
+FEWSHOT_PATH = os.path.join(HERE, "fewshot_dataset.jsonl")
+USER_WEAK_REPLIES: dict = defaultdict(int)
+USER_GOLD_EXPORTS: dict = defaultdict(int)
+USER_ANALYTICS_HISTORY: dict = defaultdict(list)
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -231,8 +238,9 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
 
 
 @app.post("/api/chat")
-async def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest, request: Request):
     global RECENT_SCORES, CONSECUTIVE_LOW, LAST_REPLY, LAST_PROMPT, LAST_SCORE, WEAK_REPLY_COUNT, ESCALATION_EVENTS
+    user_id = request.headers.get("X-User-Id") or "anonymous"
 
     weights = req.weights or {}
     prompt = apply_template(req.message, weights)
@@ -246,6 +254,7 @@ async def chat_endpoint(req: ChatRequest):
 
     if score < 50:
         WEAK_REPLY_COUNT += 1
+        USER_WEAK_REPLIES[user_id] += 1
         TRAINING_EVENTS.append({
             "type": "weak_reply",
             "score": score,
@@ -450,6 +459,102 @@ async def reinforce_hotspots():
     return {"reinforced": True, "message": f"Reinforced \"{riskiest}\" with few-shot example ({count} escalations).", "detail": reinforced}
 
 
+FEWSHOT_TEMPLATES = {
+    "motivate": {
+        "prompt": "I'm feeling really down and need motivation to keep going.",
+        "completion": "I hear you. It's completely okay to have days where you feel low — that's part of being human. What matters is that you're still here, still trying, and that takes real courage. Let's take one small step together. What's one thing you can do in the next five minutes that might bring you a tiny bit of peace or progress? You've got this, and I'm right here with you.",
+    },
+    "explain": {
+        "prompt": "Can you explain this to me like I'm five years old?",
+        "completion": "Of course! Let me start with the simplest way to think about it. Imagine you're building with LEGO blocks — each new piece connects to something you already understand. The core idea is really just one small concept, and once that clicks, everything else builds on it naturally. Here's the simplest way to look at it...",
+    },
+    "advise": {
+        "prompt": "I'm stuck between two choices and don't know what to do.",
+        "completion": "That feeling of being stuck is more common than you think, and it usually means both options have real value. Let's break this down together. First, what does your gut tell you when you imagine waking up tomorrow having made each choice? Second, which option aligns more with your long-term values rather than short-term comfort? You don't need the perfect answer — you just need the next right step.",
+    },
+    "general": {
+        "prompt": "I don't know what to do with my life right now.",
+        "completion": "That's a deeply honest question, and sitting with that uncertainty takes strength. You don't need to have it all figured out today. What if we focused on just the next season — the next three months? What would feel meaningful to explore or learn during that time? Often clarity comes from action, not from thinking alone. Let's start with one small experiment this week.",
+    },
+}
+
+
+def load_fewshot():
+    global FEWSHOT_DATASET
+    if os.path.exists(FEWSHOT_PATH):
+        with open(FEWSHOT_PATH, encoding="utf-8") as f:
+            FEWSHOT_DATASET = [json.loads(line) for line in f if line.strip()]
+
+
+def save_fewshot():
+    with open(FEWSHOT_PATH, "w", encoding="utf-8") as f:
+        for entry in FEWSHOT_DATASET:
+            f.write(json.dumps(entry) + "\n")
+
+
+@app.post("/api/adaptive-reinforce")
+async def adaptive_reinforce(data: dict = {}):
+    global FEWSHOT_DATASET, AUTO_REINFORCED_INTENTS
+    rounds = data.get("rounds", 8)
+    threshold = data.get("threshold", 30)
+    added = []
+    for intent_key, template in FEWSHOT_TEMPLATES.items():
+        if intent_key in AUTO_REINFORCED_INTENTS:
+            continue
+        mock_intents = {"motivate": 0, "explain": 0, "advise": 0, "general": 0}
+        total_weak = 0
+        for i in range(rounds):
+            prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
+            reply = generate_mock_reply(prompt, "mentor")
+            score = score_reply(reply)
+            if score < 50:
+                total_weak += 1
+        weak_pct = (total_weak / rounds) * 100
+        if weak_pct >= threshold or intent_key in ("motivate", "explain", "advise"):
+            pass
+        else:
+            continue
+        entry = {
+            "intent": intent_key,
+            "prompt": template["prompt"],
+            "completion": template["completion"],
+            "generated_at": datetime.now().isoformat(),
+            "weak_rate": round(weak_pct, 1),
+        }
+        FEWSHOT_DATASET.append(entry)
+        AUTO_REINFORCED_INTENTS.add(intent_key)
+        ADAPTIVE_HISTORY.append(entry)
+        added.append(entry)
+    save_fewshot()
+    messages = []
+    if added:
+        for a in added:
+            messages.append(f"Auto-reinforced '{a['intent']}' (weak rate {a['weak_rate']}%).")
+    else:
+        messages.append("All intents already reinforced.")
+    return {
+        "reinforced": len(added),
+        "total_fewshot": len(FEWSHOT_DATASET),
+        "messages": messages,
+        "added": [{"intent": a["intent"], "weak_rate": a["weak_rate"]} for a in added],
+    }
+
+
+@app.get("/api/adaptive-status")
+async def adaptive_status():
+    intents_covered = set(e["intent"] for e in FEWSHOT_DATASET)
+    covered_list = sorted(intents_covered) if intents_covered else ["none"]
+    return {
+        "total_fewshot": len(FEWSHOT_DATASET),
+        "intents_covered": covered_list,
+        "auto_reinforced_intents": sorted(AUTO_REINFORCED_INTENTS),
+        "history": ADAPTIVE_HISTORY[-10:],
+    }
+
+
+load_fewshot()
+
+
 @app.get("/api/conflict-stats")
 async def conflict_stats():
     total = len(CONFLICT_RESOLUTIONS)
@@ -541,12 +646,53 @@ async def run_simulation(data: dict):
     return {"results": results, "rounds": rounds, "total_prompts": rounds * len(blends)}
 
 
+@app.post("/api/gold-export")
+async def record_gold_export(data: dict, req: Request):
+    user_id = req.headers.get("X-User-Id") or "anonymous"
+    count = data.get("count", 1)
+    USER_GOLD_EXPORTS[user_id] += count
+    record = {"user_id": user_id, "count": count, "timestamp": datetime.now().isoformat()}
+    USER_ANALYTICS_HISTORY[user_id].append(record)
+    if user_id in CONTRIBUTORS:
+        CONTRIBUTORS[user_id]["gold_exports"] = USER_GOLD_EXPORTS[user_id]
+    return {"status": "ok", "user_id": user_id, "total_gold": USER_GOLD_EXPORTS[user_id]}
+
+
 @app.get("/api/contributors")
 async def get_contributors():
+    enriched = []
+    for c in CONTRIBUTORS.values():
+        uid = c["user_id"]
+        enriched.append({
+            **c,
+            "weak_replies": USER_WEAK_REPLIES.get(uid, 0),
+            "gold_exports": USER_GOLD_EXPORTS.get(uid, 0),
+        })
     return {
-        "contributors": list(CONTRIBUTORS.values()),
-        "total": len(CONTRIBUTORS),
+        "contributors": enriched,
+        "total": len(enriched),
     }
+
+
+@app.get("/api/contributor-analytics")
+async def contributor_analytics():
+    users = sorted(set(
+        list(CONTRIBUTORS.keys()) +
+        list(USER_WEAK_REPLIES.keys()) +
+        list(USER_GOLD_EXPORTS.keys())
+    ))
+    analytics = []
+    for uid in users:
+        analytics.append({
+            "user_id": uid,
+            "sync_count": CONTRIBUTORS.get(uid, {}).get("sync_count", 0),
+            "conflict_count": CONTRIBUTORS.get(uid, {}).get("conflict_count", 0),
+            "weak_replies": USER_WEAK_REPLIES.get(uid, 0),
+            "gold_exports": USER_GOLD_EXPORTS.get(uid, 0),
+            "last_sync": CONTRIBUTORS.get(uid, {}).get("last_sync"),
+            "history": USER_ANALYTICS_HISTORY.get(uid, [])[-5:],
+        })
+    return {"analytics": analytics, "total_users": len(analytics)}
 
 
 @app.post("/api/conflict-resolve")
