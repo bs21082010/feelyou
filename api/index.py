@@ -46,6 +46,10 @@ CONSECUTIVE_LOW = 0
 LAST_REPLY = None
 LAST_PROMPT = None
 LAST_SCORE = None
+WEAK_REPLY_COUNT = 0
+LAST_SYNC_TIME = None
+ESCALATION_EVENTS: list = []
+LAST_SYNC_STATUS = "never"
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -219,7 +223,7 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
 
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
-    global RECENT_SCORES, CONSECUTIVE_LOW, LAST_REPLY, LAST_PROMPT, LAST_SCORE
+    global RECENT_SCORES, CONSECUTIVE_LOW, LAST_REPLY, LAST_PROMPT, LAST_SCORE, WEAK_REPLY_COUNT, ESCALATION_EVENTS
 
     weights = req.weights or {}
     prompt = apply_template(req.message, weights)
@@ -231,6 +235,9 @@ async def chat_endpoint(req: ChatRequest):
     if len(RECENT_SCORES) > 20: RECENT_SCORES.pop(0)
     CONSECUTIVE_LOW = CONSECUTIVE_LOW + 1 if score < 50 else 0
 
+    if score < 50:
+        WEAK_REPLY_COUNT += 1
+
     LAST_PROMPT = prompt if LAST_PROMPT is None else LAST_PROMPT
     LAST_REPLY = reply if LAST_REPLY is None else LAST_REPLY
     LAST_SCORE = score if LAST_SCORE is None else LAST_SCORE
@@ -241,6 +248,11 @@ async def chat_endpoint(req: ChatRequest):
         if CONSECUTIVE_LOW >= 7: escalation_tier = 3
         elif CONSECUTIVE_LOW >= 5: escalation_tier = 2
         else: escalation_tier = 1
+        ESCALATION_EVENTS.append({
+            "tier": escalation_tier,
+            "intent": intent or "general",
+            "timestamp": datetime.now().isoformat(),
+        })
 
     if weights:
         normalize_weights(weights)
@@ -273,6 +285,51 @@ async def health():
         "llm_url": LLM_API_URL,
         "has_api_key": bool(LLM_API_KEY),
         "mode": "offline" if "localhost" in LLM_API_URL and not LLM_API_KEY else "configured",
+    }
+
+
+@app.get("/api/heatmap-narration")
+async def heatmap_narration():
+    if not ESCALATION_EVENTS:
+        return {"narration": "No escalation events recorded yet."}
+    tiers = Counter(e["tier"] for e in ESCALATION_EVENTS)
+    intents = Counter(e["intent"] for e in ESCALATION_EVENTS)
+    total = len(ESCALATION_EVENTS)
+    most_common_intent = intents.most_common(1)
+    parts = [f"{total} escalation events total."]
+    for t in sorted(tiers):
+        label = {1: "external lookups", 2: "persona shifts", 3: "hard fallbacks"}.get(t, f"tier {t}")
+        parts.append(f"{tiers[t]} {label}.")
+    if most_common_intent:
+        parts.append(f"Most frequent trigger is {most_common_intent[0][0]} with {most_common_intent[0][1]} events.")
+    return {"narration": " ".join(parts)}
+
+
+@app.get("/api/sync-status")
+async def sync_status():
+    return {
+        "last_sync": LAST_SYNC_STATUS,
+        "last_sync_time": LAST_SYNC_TIME,
+        "weak_reply_count": WEAK_REPLY_COUNT,
+    }
+
+
+@app.post("/api/sync")
+async def trigger_sync():
+    global LAST_SYNC_TIME, LAST_SYNC_STATUS
+    LAST_SYNC_TIME = datetime.now().isoformat()
+    LAST_SYNC_STATUS = "synced"
+    return {"status": "ok", "synced_at": LAST_SYNC_TIME}
+
+
+@app.get("/api/weak-alert")
+async def weak_alert():
+    threshold = 3
+    return {
+        "count": WEAK_REPLY_COUNT,
+        "alert": WEAK_REPLY_COUNT >= threshold,
+        "threshold": threshold,
+        "message": f"⚠️ {WEAK_REPLY_COUNT} weak repl{'y' if WEAK_REPLY_COUNT == 1 else 'ies'} detected. {'Consider retraining or adjusting persona.' if WEAK_REPLY_COUNT >= threshold else 'All good.'}" if WEAK_REPLY_COUNT >= threshold else None,
     }
 
 
