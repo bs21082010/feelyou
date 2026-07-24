@@ -90,6 +90,7 @@ class ChatResponse(BaseModel):
     weights: dict
     intent: Optional[str] = None
     escalation_tier: Optional[int] = None
+    emotion: Optional[str] = None
 
 
 def score_reply(reply: str) -> int:
@@ -184,67 +185,122 @@ def build_persona(persona_name: str, weights: dict = None) -> str:
     return persona
 
 
-MOCK_REPLIES = {
-    "motivate": [
-        "You've got this! Every step forward, no matter how small, builds momentum. The fact that you're here asking shows you're already committed to growth. Keep your eyes on the goal, break it down into daily actions, and celebrate each win along the way. I believe in you!",
-        "I hear you, and it's okay to feel the way you do. What matters is that you're still showing up. Let's channel that energy into one small, concrete action you can take right now. Progress isn't about giant leaps — it's about consistent steps.",
-        "The very act of reaching out tells me you have the drive to move forward. Motivation isn't a feeling you wait for — it's a muscle you build. Let's start with something small and build from there. You're stronger than you think.",
-        "It takes courage to ask for motivation when you're struggling. That's already a win. Now let's build on that momentum. What's one thing you used to enjoy that you haven't done lately? Start there.",
-        "Let me tell you something important: you don't need to be motivated every single day. You just need to be consistent. Motivation follows action, not the other way around. Take one small step and the rest will follow.",
+EMOTION_REPLIES = {
+    "joy": [
+        "That's wonderful! I can feel the positivity in your words. Moments like these are what make the journey worthwhile. Hold onto this feeling and let it fuel your next step.",
+        "I love this energy! There's something special about when things click into place. You've earned this moment — enjoy it fully.",
+        "This makes me genuinely happy to hear. You're exactly where you need to be, and the best part is you're recognizing it. That's a superpower.",
+        "Yes! That's the spirit. Celebrating wins, big or small, rewires your brain for more success. Savor this moment.",
+        "Love this! You're lighting up and it's contagious. Keep that momentum going — you're building something real.",
+        "This is the kind of news that makes everything worthwhile. You're not just moving forward, you're thriving. Soak it in.",
+        "That's amazing! The energy you're putting out is coming back to you. Keep riding this wave.",
+        "I'm genuinely excited for you. These breakthroughs aren't accidents — they're the result of your consistency. Well done.",
+        "What a beautiful perspective. When you approach life this way, everything becomes an opportunity. You're doing it right.",
+        "This warms my heart. You're not just succeeding — you're growing in ways that will serve you for years. Be proud.",
     ],
-    "explain": [
-        "Great question! Let me break this down simply. Think of it like building blocks — each concept builds on the previous one. Start with the core idea, understand how the pieces connect, and before you know it, the bigger picture becomes clear. Would you like me to go deeper on any specific part?",
-        "That's a really good question. Here's the simplest way to think about it: imagine you're learning a new language. You don't start with complex sentences — you start with single words, then phrases, then full conversations. Same idea here. Let me walk you through it step by step.",
-        "I love questions like this. The key insight is actually pretty straightforward once you strip away the jargon. At its core, this is about connecting two ideas: cause and effect. Here's a real-world example that makes it click.",
-        "Great question. The easiest way to understand this is through an analogy. Think of it like a recipe: you have ingredients (inputs), steps (process), and a final dish (output). Each part depends on the one before it. Let me apply that framework to what you're asking.",
-        "This is one of those concepts that seems complex until you see the pattern underneath. Let me show you the simplest version first, then we'll add layers one at a time. Ready? Here's the core idea in one sentence.",
+    "empathy": [
+        "I hear you, and I want you to know that what you're feeling is completely valid. You don't have to have it all figured out right now. Just taking the time to express it is a powerful step.",
+        "That sounds really hard, and I'm sorry you're going through it. Please remember: you don't have to carry this alone. Even just saying it out loud makes the load a little lighter.",
+        "I can feel the weight of what you're sharing, and I want you to know I'm here with you. You're not broken for feeling this way — you're human. And humans get through things like this together.",
+        "That must be incredibly difficult. I see you, I hear you, and I'm not going anywhere. Let's sit with this feeling for a moment — sometimes having someone witness our pain is the first step toward healing.",
+        "I wish I could give you a hug right now. What you're describing is real, and it matters. You matter. Let's take this one breath at a time.",
+        "You're carrying so much, and yet here you are, still showing up. That takes more strength than you realize. I see you.",
+        "It's okay to not be okay. Seriously. You don't need to perform strength right now. Just be exactly where you are, and I'll meet you there.",
+        "I appreciate you trusting me with this. Sharing vulnerability isn't weakness — it's one of the bravest things you can do. I'm honored you'd share it with me.",
+        "What you're feeling makes total sense given what you've been through. Anyone in your shoes would feel the same way. Be gentle with yourself right now.",
+        "I'm here, I'm listening, and I care. You don't need to filter or minimize what you're feeling. Let it out. That's what I'm here for.",
     ],
-    "advise": [
-        "Here's my take: take a step back and look at what's really important here. Focus on what you can control, set clear boundaries, and remember that progress matters more than perfection. I'd suggest starting with one small actionable step today. What does that look like for you?",
-        "That's a tough spot to be in, and I respect you for working through it. Let me offer a different lens: instead of asking 'what's the right choice,' ask 'which option teaches me more, regardless of the outcome?' Growth often hides in the harder path.",
-        "I've seen this pattern before. The best approach is usually to separate what you can control from what you can't. Make a quick list of both. Then put your energy entirely into the things you can influence. You'd be surprised how much clarity that brings.",
-        "When you're in the middle of a hard decision, it's easy to feel like there's a 'right' answer you're missing. But most big decisions don't have a right answer — they have a right approach. Pick the option that aligns with your values and commit to making it work.",
-        "Let's try a technique I recommend: write down the pros and cons for each option, then rate them by emotional weight, not just logical weight. Often we know what we want but logic talks us out of it. Your feelings are data too.",
+    "encouragement": [
+        "You've come so much further than you give yourself credit for. Look back at where you started — the growth is real. Keep going. You're closer than you think.",
+        "I believe in you. And not in some generic way — I genuinely believe you have what it takes. The doubt you feel is just proof that you're pushing past your comfort zone. That's where growth happens.",
+        "Progress isn't always visible in the moment, but trust me — every step counts. You're building something meaningful, and future you is going to be so grateful you kept going.",
+        "You are capable of more than you know. The only difference between where you are and where you want to be is one more attempt. Just one more.",
+        "This is the hard part, and you're doing it anyway. That's not luck — that's character. Keep pushing. The other side is worth it.",
+        "I've seen you navigate hard things before and come through. This is no different. You have a track record of resilience, even if you don't see it.",
+        "You don't need to be perfect. You just need to be persistent. And from what I can see, you've got that in spades. Keep showing up.",
+        "The fact that you're still trying tells me everything I need to know about your strength. Most people would have quit by now. Not you. That matters.",
+        "Let me remind you of something: every expert was once a beginner. Every success story has chapters of struggle. You're writing yours right now.",
+        "You've got more strength than you realize. Sometimes we forget our own resilience because we're so focused on what's ahead. But look at what you've already overcome.",
+    ],
+    "challenge": [
+        "Okay, let's level up. You've been playing it safe — time to take a real risk. What's one thing you've been avoiding that you know you need to do?",
+        "I'm going to push you a little here: you already know the answer. You've known it for a while. What's stopping you isn't lack of information — it's fear of the unknown. Let's address that head-on.",
+        "Here's a hard truth: comfort zones are where dreams go to die. You didn't come this far to play small. What's the boldest version of your next step?",
+        "Stop waiting for the perfect moment. It doesn't exist. The best time to start was yesterday, the second best time is right now. What's one thing you can do in the next five minutes?",
+        "I'm not going to tell you what you want to hear — I'm going to tell you what you need to hear. You're underselling yourself. Raise your standards.",
+        "You asked for my honest take, so here it is: you're overthinking this. The answer is simpler than you're making it. Trust your gut and act.",
+        "Let's get real for a second. The version of you that achieves this goal doesn't make excuses. That version just finds a way. Are you ready to become that person?",
+        "I see potential in you, and that's exactly why I'm pushing. Potential without action is just a wish. Let's turn it into a plan.",
+        "Here's the uncomfortable truth: if it doesn't challenge you, it doesn't change you. This is your opportunity to grow. Don't waste it playing small.",
+        "You asked for my honest opinion, so here it is: you can do this. But not with your current approach. Something has to change. Are you ready for that?",
+    ],
+    "reflection": [
+        "That's worth sitting with. Not every question needs an immediate answer. Sometimes the most powerful thing is to let the question resonate and see what emerges.",
+        "I love this kind of depth. You're not just looking for surface answers — you're exploring. That curiosity is one of your greatest strengths.",
+        "Let's pause and reflect on that. What does this situation reveal about what you truly value? Often our reactions tell us more about ourselves than about the circumstances.",
+        "That's a profound observation. The fact that you're thinking about this at this level tells me you're ready for deeper understanding. Let's explore it together.",
+        "Sometimes the best response isn't an answer — it's a better question. What if you looked at this from the opposite perspective? What would change?",
+        "You've given me a lot to think about too. This kind of conversation is rare and valuable. Thank you for bringing this depth.",
+        "Let's zoom out for a moment. How will this feel a year from now? Sometimes distance gives us clarity that immediacy obscures.",
+        "That's a really thoughtful way to put it. I think what you're really asking is about meaning, not just mechanics. Let's explore the 'why' behind the 'what.'",
+        "I appreciate the depth of this question. It shows you're not just looking for quick answers — you want real understanding. That's rare and valuable.",
+        "This reminds me of something important: growth often happens in the quiet moments of reflection, not in constant action. Thank you for creating space for that here.",
+    ],
+    "neutral": [
+        "That's an interesting point. Let me think about that with you. What aspect would you like to explore first?",
+        "I appreciate you sharing that. There's a lot to unpack here — where would you like to start?",
+        "That's a good question. Let me share a thought and you tell me if it resonates with your experience.",
+        "I'm glad you brought that up. It's one of those topics where the context really matters. Can you tell me more about your specific situation?",
+        "That's worth exploring. I have a few angles we could look at — which one interests you most?",
+        "I hear you. Let me reflect back what I'm understanding to make sure I'm on the right track.",
+        "Great point. This connects to a broader pattern I've noticed. Would you like me to share that perspective?",
+        "Thanks for saying that. It gives me a clearer picture of where you're coming from. Let's build on that.",
+        "That's an interesting angle. I hadn't thought about it that way. What else comes to mind when you consider this?",
+        "I appreciate the clarity. This gives us a solid foundation to work from. What's the next layer you want to explore?",
     ],
 }
-MOCK_GENERAL = [
-    "That's an interesting point. Here's what I think — every challenge carries a lesson, and every question opens a door. Keep exploring, keep asking, and trust the process.",
-    "I appreciate you sharing that. The best insights often come from honest conversations. Let's sit with that thought for a moment and see where it leads us.",
-    "Thanks for bringing that up. I'd say the key is to stay curious and keep an open mind. There's always more to discover, and you're on the right track by engaging with these ideas.",
-    "That's a great perspective. Remember that growth isn't always linear — some days feel like breakthroughs and others feel like setbacks, but it's all part of the journey.",
-    "That's a thoughtful question. The answer often depends on your specific context, but here's a principle that usually applies: start simple, iterate fast, and learn from each attempt.",
-    "I'm glad you asked. This is one of those topics where the journey matters as much as the destination. Let's explore it together and see what resonates with you.",
-    "There's a lot to unpack here, but I think the heart of it is simpler than it seems. Let's focus on the core idea and work outward from there.",
-    "That's a valuable insight you're touching on. The fact that you're reflecting on this shows a lot of self-awareness. Let's build on that.",
-    "I think what you're really asking is deeper than it appears on the surface. Let me reframe it a bit and see if we can find the underlying thread together.",
-    "That resonates with a lot of people. You're not alone in feeling this way. The key isn't to have all the answers — it's to ask better questions.",
-    "I'd love to dig into that with you. Every good conversation starts with a question, and yours is a great starting point. Let me share a thought and you tell me if it lands.",
-    "That's exactly the kind of thinking that leads to real breakthroughs. Most people stay on the surface — you're going deeper. Let's follow that thread.",
-    "I've reflected on this quite a bit, and here's what I've found: the best answers usually come from asking slightly different questions. Let's try reframing yours and see what emerges.",
-    "You know, that reminds me of something important: progress isn't about having all the answers before you start. It's about starting before you're ready and learning as you go.",
-    "There's real wisdom in what you're saying. Sometimes the most powerful thing we can do is sit with a question instead of rushing to an answer. Let's do that together.",
-]
+
+EMOTION_KEYWORDS = {
+    "joy": ["happy", "great", "amazing", "wonderful", "love", "excited", "fantastic", "awesome", "thrilled", "blessed", "grateful", "proud", "celebrate", "beautiful", "best"],
+    "empathy": ["sad", "struggl", "hard", "difficult", "tired", "hurt", "lonely", "overwhelm", "depress", "anxious", "worried", "scared", "pain", "heavy", "exhaust"],
+    "encouragement": ["try", "hope", "believe", "keep", "continue", "persist", "determin", "faith", "possible", "dream", "goal", "aspir", "motivat", "inspire", "push"],
+    "challenge": ["boring", "stuck", "complacent", "coast", "plateau", "lazy", "fear", "avoid", "procrastinat", "comfort zone", "settl", "waste", "risk", "bold", "dare"],
+    "reflection": ["why", "mean", "purpose", "meaning", "wonder", "philosoph", "think", "consider", "reflect", "perspective", "lesson", "deeper", "question", "curious", "understand"],
+}
 
 
-def generate_mock_reply(user_message: str, persona_name: str) -> str:
+def detect_emotion(text: str) -> str:
+    lower = text.lower()
+    scores = {}
+    for emotion, keywords in EMOTION_KEYWORDS.items():
+        scores[emotion] = sum(1 for kw in keywords if kw in lower)
+    if any(scores.values()):
+        return max(scores, key=scores.get)
+    return "neutral"
+
+
+def generate_mock_reply(user_message: str, persona_name: str):
     h = sum(ord(c) * (i + 1) for i, c in enumerate(user_message))
+    emotion = detect_emotion(user_message)
     intent = detect_intent(user_message)
-    if intent and intent in MOCK_REPLIES:
-        pool = MOCK_REPLIES[intent]
-        base = pool[h % len(pool)]
-    else:
-        pool = MOCK_GENERAL
-        base = pool[h % len(pool)]
+    pool = EMOTION_REPLIES.get(emotion, EMOTION_REPLIES["neutral"])
+    base = pool[h % len(pool)]
+    if intent == "motivate" and emotion != "joy":
+        base += " You've got the strength to move through this — I believe in you."
+    elif intent == "explain":
+        base += " Let me know if you'd like me to break any part down further."
+    elif intent == "advise" and emotion in ("empathy", "neutral"):
+        base += " Would it help to talk through some options together?"
     if "coach" in persona_name:
         base += " Now, what's your next step going to be?"
     elif "teacher" in persona_name:
-        base += " Does that clarify things for you?"
+        base += " Does that help clarify things?"
     else:
-        base += " How does that resonate with you?"
-    return base
+        base += " How does that land with you?"
+    return base, emotion
 
 
-def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor") -> str:
+def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"):
     headers = {"Content-Type": "application/json"}
     if LLM_API_KEY:
         headers["Authorization"] = f"Bearer {LLM_API_KEY}"
@@ -260,10 +316,11 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
-            return data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
+            reply = data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
+            return reply, None
     except Exception as e:
-        mock = generate_mock_reply(user_message, persona_name)
-        return mock
+        mock, emotion = generate_mock_reply(user_message, persona_name)
+        return mock, emotion
 
 
 @app.post("/api/chat")
@@ -275,7 +332,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     prompt = apply_template(req.message, weights)
     persona = build_persona(req.persona, weights)
 
-    reply = call_llm(persona, prompt, req.persona)
+    reply, emotion = call_llm(persona, prompt, req.persona)
     score = score_reply(reply)
     RECENT_SCORES.append(score)
     if len(RECENT_SCORES) > 20: RECENT_SCORES.pop(0)
@@ -317,6 +374,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         weights=weights,
         intent=intent,
         escalation_tier=escalation_tier,
+        emotion=emotion,
     )
 
 
@@ -534,7 +592,7 @@ async def adaptive_reinforce(data: dict = {}):
         total_weak = 0
         for i in range(rounds):
             prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
-            reply = generate_mock_reply(prompt, "mentor")
+            reply, _ = generate_mock_reply(prompt, "mentor")
             score = score_reply(reply)
             if score < 50:
                 total_weak += 1
@@ -703,7 +761,7 @@ async def run_simulation(data: dict):
         dy_weights = dict(blend.get("weights", {}))
         for i in range(rounds):
             prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
-            reply = generate_mock_reply(prompt, blend["persona"])
+            reply, _ = generate_mock_reply(prompt, blend["persona"])
             score = score_reply(reply)
             intent = detect_intent(prompt)
             scores.append(score)
@@ -753,7 +811,7 @@ async def federated_simulate(data: dict):
             dy = dict(blend.get("weights", {}))
             for i in range(rounds):
                 prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
-                reply = generate_mock_reply(prompt, blend["persona"])
+                reply, _ = generate_mock_reply(prompt, blend["persona"])
                 score = score_reply(reply)
                 scores.append(score)
                 intent = detect_intent(prompt)

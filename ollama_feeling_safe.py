@@ -1701,6 +1701,91 @@ def chat_with_voice(persona_name="mentor"):
         speak_text("Interrupted.")
 
 
+EMOTION_REPLIES = {
+    "joy": [
+        "That's wonderful! I can feel the positivity in your words. Moments like these are what make the journey worthwhile. Hold onto this feeling and let it fuel your next step.",
+        "I love this energy! There's something special about when things click into place. You've earned this moment — enjoy it fully.",
+        "This makes me genuinely happy to hear. You're exactly where you need to be, and the best part is you're recognizing it. That's a superpower.",
+        "Yes! That's the spirit. Celebrating wins, big or small, rewires your brain for more success. Savor this moment.",
+        "Love this! You're lighting up and it's contagious. Keep that momentum going — you're building something real.",
+    ],
+    "empathy": [
+        "I hear you, and I want you to know that what you're feeling is completely valid. You don't have to have it all figured out right now. Just taking the time to express it is a powerful step.",
+        "That sounds really hard, and I'm sorry you're going through it. Please remember: you don't have to carry this alone. Even just saying it out loud makes the load a little lighter.",
+        "I can feel the weight of what you're sharing, and I want you to know I'm here with you. You're not broken for feeling this way — you're human.",
+        "That must be incredibly difficult. I see you, I hear you, and I'm not going anywhere. Let's sit with this feeling for a moment.",
+        "You're carrying so much, and yet here you are, still showing up. That takes more strength than you realize. I see you.",
+    ],
+    "encouragement": [
+        "You've come so much further than you give yourself credit for. Look back at where you started — the growth is real. Keep going. You're closer than you think.",
+        "I believe in you. And not in some generic way — I genuinely believe you have what it takes.",
+        "Progress isn't always visible in the moment, but trust me — every step counts. You're building something meaningful.",
+        "You are capable of more than you know. The only difference between where you are and where you want to be is one more attempt.",
+        "This is the hard part, and you're doing it anyway. That's not luck — that's character.",
+    ],
+    "challenge": [
+        "Okay, let's level up. You've been playing it safe — time to take a real risk. What's one thing you've been avoiding?",
+        "I'm going to push you a little here: you already know the answer. You've known it for a while. What's stopping you isn't lack of information — it's fear.",
+        "Here's a hard truth: comfort zones are where dreams go to die. You didn't come this far to play small.",
+        "Stop waiting for the perfect moment. It doesn't exist. The best time to start was yesterday, the second best time is right now.",
+        "I'm not going to tell you what you want to hear — I'm going to tell you what you need to hear. You're underselling yourself.",
+    ],
+    "reflection": [
+        "That's worth sitting with. Not every question needs an immediate answer. Sometimes the most powerful thing is to let the question resonate.",
+        "I love this kind of depth. You're not just looking for surface answers — you're exploring. That curiosity is one of your greatest strengths.",
+        "Let's pause and reflect on that. What does this situation reveal about what you truly value?",
+        "That's a profound observation. The fact that you're thinking about this at this level tells me you're ready for deeper understanding.",
+        "Sometimes the best response isn't an answer — it's a better question. What if you looked at this from the opposite perspective?",
+    ],
+    "neutral": [
+        "That's an interesting point. Let me think about that with you. What aspect would you like to explore first?",
+        "I appreciate you sharing that. There's a lot to unpack here — where would you like to start?",
+        "That's a good question. Let me share a thought and you tell me if it resonates with your experience.",
+        "I'm glad you brought that up. It's one of those topics where the context really matters.",
+        "That's worth exploring. I have a few angles we could look at — which one interests you most?",
+    ],
+}
+
+EMOTION_KEYWORDS = {
+    "joy": ["happy", "great", "amazing", "wonderful", "love", "excited", "fantastic", "awesome", "thrilled", "blessed", "grateful", "proud", "celebrate", "beautiful", "best"],
+    "empathy": ["sad", "struggl", "hard", "difficult", "tired", "hurt", "lonely", "overwhelm", "depress", "anxious", "worried", "scared", "pain", "heavy", "exhaust"],
+    "encouragement": ["try", "hope", "believe", "keep", "continue", "persist", "determin", "faith", "possible", "dream", "goal", "aspir", "motivat", "inspire", "push"],
+    "challenge": ["boring", "stuck", "complacent", "coast", "plateau", "lazy", "fear", "avoid", "procrastinat", "comfort", "settl", "waste", "risk", "bold", "dare"],
+    "reflection": ["why", "mean", "purpose", "meaning", "wonder", "philosoph", "think", "consider", "reflect", "perspective", "lesson", "deeper", "question", "curious", "understand"],
+}
+
+
+def detect_emotion(text):
+    lower = text.lower()
+    scores = {}
+    for emotion, keywords in EMOTION_KEYWORDS.items():
+        scores[emotion] = sum(1 for kw in keywords if kw in lower)
+    if any(scores.values()):
+        return max(scores, key=scores.get)
+    return "neutral"
+
+
+def generate_mock_reply(user_message, persona_name="mentor"):
+    h = sum(ord(c) * (i + 1) for i, c in enumerate(user_message))
+    emotion = detect_emotion(user_message)
+    intent = detect_intent(user_message)
+    pool = EMOTION_REPLIES.get(emotion, EMOTION_REPLIES["neutral"])
+    base = pool[h % len(pool)]
+    if intent == "motivate" and emotion != "joy":
+        base += " You've got the strength to move through this — I believe in you."
+    elif intent == "explain":
+        base += " Let me know if you'd like me to break any part down further."
+    elif intent == "advise" and emotion in ("empathy", "neutral"):
+        base += " Would it help to talk through some options together?"
+    if "coach" in persona_name:
+        base += " Now, what's your next step going to be?"
+    elif "teacher" in persona_name:
+        base += " Does that help clarify things?"
+    else:
+        base += " How does that land with you?"
+    return base
+
+
 SIMULATION_PROMPTS = [
     "I'm feeling a bit lost today. Can you help me find direction?",
     "How do I stay motivated when things get hard?",
