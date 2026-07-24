@@ -72,6 +72,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">LLM Setup</label><div class="stat" style="font-size:10px;line-height:1.5">To use a real AI, set env vars on Vercel:<br><code style="display:block;background:var(--surface3);padding:3px 6px;border-radius:4px;margin:2px 0;word-break:break-all;font-size:9px">vercel env add LLM_API_URL<br>vercel env add LLM_MODEL<br>vercel env add LLM_API_KEY</code><span style="color:var(--text3)">Currently offline with mock replies</span></div></div>
   </div>
 </div>
 <div class="main">

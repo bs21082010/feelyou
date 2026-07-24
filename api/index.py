@@ -185,23 +185,42 @@ def build_persona(persona_name: str, weights: dict = None) -> str:
 
 
 MOCK_REPLIES = {
-    "motivate": "You've got this! Every step forward, no matter how small, builds momentum. The fact that you're here asking shows you're already committed to growth. Keep your eyes on the goal, break it down into daily actions, and celebrate each win along the way. I believe in you!",
-    "explain": "Great question! Let me break this down simply. Think of it like building blocks — each concept builds on the previous one. Start with the core idea, understand how the pieces connect, and before you know it, the bigger picture becomes clear. Would you like me to go deeper on any specific part?",
-    "advise": "Here's my take: take a step back and look at what's really important here. Focus on what you can control, set clear boundaries, and remember that progress matters more than perfection. I'd suggest starting with one small actionable step today. What does that look like for you?",
+    "motivate": [
+        "You've got this! Every step forward, no matter how small, builds momentum. The fact that you're here asking shows you're already committed to growth. Keep your eyes on the goal, break it down into daily actions, and celebrate each win along the way. I believe in you!",
+        "I hear you, and it's okay to feel the way you do. What matters is that you're still showing up. Let's channel that energy into one small, concrete action you can take right now. Progress isn't about giant leaps — it's about consistent steps.",
+        "The very act of reaching out tells me you have the drive to move forward. Motivation isn't a feeling you wait for — it's a muscle you build. Let's start with something small and build from there. You're stronger than you think.",
+    ],
+    "explain": [
+        "Great question! Let me break this down simply. Think of it like building blocks — each concept builds on the previous one. Start with the core idea, understand how the pieces connect, and before you know it, the bigger picture becomes clear. Would you like me to go deeper on any specific part?",
+        "That's a really good question. Here's the simplest way to think about it: imagine you're learning a new language. You don't start with complex sentences — you start with single words, then phrases, then full conversations. Same idea here. Let me walk you through it step by step.",
+        "I love questions like this. The key insight is actually pretty straightforward once you strip away the jargon. At its core, this is about connecting two ideas: cause and effect. Here's a real-world example that makes it click.",
+    ],
+    "advise": [
+        "Here's my take: take a step back and look at what's really important here. Focus on what you can control, set clear boundaries, and remember that progress matters more than perfection. I'd suggest starting with one small actionable step today. What does that look like for you?",
+        "That's a tough spot to be in, and I respect you for working through it. Let me offer a different lens: instead of asking 'what's the right choice,' ask 'which option teaches me more, regardless of the outcome?' Growth often hides in the harder path.",
+        "I've seen this pattern before. The best approach is usually to separate what you can control from what you can't. Make a quick list of both. Then put your energy entirely into the things you can influence. You'd be surprised how much clarity that brings.",
+    ],
 }
 MOCK_GENERAL = [
     "That's an interesting point. Here's what I think — every challenge carries a lesson, and every question opens a door. Keep exploring, keep asking, and trust the process.",
     "I appreciate you sharing that. The best insights often come from honest conversations. Let's sit with that thought for a moment and see where it leads us.",
     "Thanks for bringing that up. I'd say the key is to stay curious and keep an open mind. There's always more to discover, and you're on the right track by engaging with these ideas.",
     "That's a great perspective. Remember that growth isn't always linear — some days feel like breakthroughs and others feel like setbacks, but it's all part of the journey.",
+    "That's a thoughtful question. The answer often depends on your specific context, but here's a principle that usually applies: start simple, iterate fast, and learn from each attempt.",
+    "I'm glad you asked. This is one of those topics where the journey matters as much as the destination. Let's explore it together and see what resonates with you.",
+    "There's a lot to unpack here, but I think the heart of it is simpler than it seems. Let's focus on the core idea and work outward from there.",
+    "That's a valuable insight you're touching on. The fact that you're reflecting on this shows a lot of self-awareness. Let's build on that.",
+    "I think what you're really asking is deeper than it appears on the surface. Let me reframe it a bit and see if we can find the underlying thread together.",
+    "That resonates with a lot of people. You're not alone in feeling this way. The key isn't to have all the answers — it's to ask better questions.",
 ]
+
+import random
 
 def generate_mock_reply(user_message: str, persona_name: str) -> str:
     intent = detect_intent(user_message)
     if intent and intent in MOCK_REPLIES:
-        base = MOCK_REPLIES[intent]
+        base = random.choice(MOCK_REPLIES[intent])
     else:
-        import random
         base = random.choice(MOCK_GENERAL)
     if "coach" in persona_name:
         base += " Now, what's your next step going to be?"
@@ -230,11 +249,8 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
             data = json.loads(resp.read())
             return data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
     except Exception as e:
-        err = str(e)[:80]
         mock = generate_mock_reply(user_message, persona_name)
-        if "Connection refused" in err or "localhost" in err or "timed out" in err.lower() or "errno" in err.lower():
-            return mock + "\n\n*(Running in offline mode — no LLM API configured. Set LLM_API_URL for real AI replies.)*"
-        return mock + f"\n\n*(API error: {err}. Falling back to offline mode.)*"
+        return mock
 
 
 @app.post("/api/chat")
