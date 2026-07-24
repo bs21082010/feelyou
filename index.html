@@ -67,6 +67,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Escalation Reinforce</label><div id="escStatus" class="stat">No data</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="escReinfBtn" style="background:var(--red);color:var(--bg);font-size:10px">🔁 Reinforce Patterns</button></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift Overlay <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors <button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
@@ -404,6 +405,93 @@ esb.onclick=async()=>{
   }catch(e){es.innerHTML='Error: '+e.message}
   esb.disabled=0;esb.textContent='\uD83D\uDD01 Reinforce Patterns'
 };
+
+const DRIFT_COLORS={sync:'#89b4fa',conflict_resolve:'#f38ba8',weak_reply:'#f9e2af',gold_export:'#f5c2e7',simulate:'#a6e3a1',federated_simulate:'#cba6f7'};
+const DRIFT_LABELS={sync:'Sync',conflict_resolve:'Conflict',weak_reply:'Weak',gold_export:'Gold',simulate:'Sim',federated_simulate:'Fed Sim'};
+
+async function loadDrift(){
+  const canvas=$('#driftCanvas'),legend=$('#driftLegend'),inf=$('#driftInfluence');
+  canvas.style.display='none';legend.innerHTML='';inf.innerHTML='Loading...';
+  try{
+    const r=await fetch(API+'/persona-drift');const d=await r.json();
+    if(!d.timeline.length){inf.innerHTML='No drift data yet. Sync, chat, or simulate to generate events.';return}
+    drawDriftChart(canvas,d);
+    legend.innerHTML=Object.entries(DRIFT_COLORS).map(([k,c])=>'<span style="color:'+c+'">\u25CF '+DRIFT_LABELS[k]+'</span>').join('')+' <span style="color:var(--text3)">\u2014 Avg Conf</span>';
+    const infArr=Object.entries(d.influence);
+    if(infArr.length){
+      inf.innerHTML=infArr.map(([uid,infData])=>{
+        const driftStr=Object.keys(infData.weight_drift||{}).length?' ['+Object.entries(infData.weight_drift).map(([k,v])=>k+': '+(v>0?'+':'')+v).join(', ')+']':'';
+        return '<span style="color:'+(uid===userId?'var(--blue)':'var(--text2)')+'"><b>'+uid+'</b></span> '+infData.events+' ev'+(infData.last_action?' \u22c5 last: '+DRIFT_LABELS[infData.last_action]||infData.last_action:'')+driftStr
+      }).join('<br>')
+    }else{
+      inf.innerHTML='No contributor influence data yet.'
+    }
+  }catch(e){inf.innerHTML='Error: '+e.message}
+}
+
+function drawDriftChart(canvas,d){
+  const ctx=canvas.getContext('2d');
+  const W=canvas.parentElement.clientWidth-4||260,H=120;
+  canvas.width=W*2;canvas.height=H*2;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  canvas.style.display='block';
+  ctx.scale(2,2);
+  const pad={t:14,b:20,l:28,r:8};
+  const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+  const simTrend=d.sim_avg_trend||[];
+  const events=d.timeline.filter(e=>e.action!=='simulate'&&e.action!=='federated_simulate');
+  const maxCount=Math.max(events.length,simTrend.length,5);
+  ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='7px sans-serif';
+  for(let i=0;i<=4;i++){
+    const y=pad.t+ch-(i/4*ch),v=Math.round(100-i*25);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
+    ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v+'%',pad.l-3,y+2)
+  }
+  if(simTrend.length>1){
+    ctx.beginPath();ctx.strokeStyle='rgba(205,214,244,0.5)';ctx.lineWidth=1;
+    simTrend.forEach((pt,i)=>{
+      const x=pad.l+(i/(simTrend.length-1||1))*cw;
+      const y=pad.t+ch-((pt.value||50)/100*ch);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+    });
+    ctx.stroke()
+  }
+  if(simTrend.length>1){
+    simTrend.forEach((pt,i)=>{
+      const x=pad.l+(i/(simTrend.length-1||1))*cw;
+      const y=pad.t+ch-((pt.value||50)/100*ch);
+      ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(205,214,244,0.6)';ctx.fill()
+    })
+  }
+  if(events.length){
+    events.forEach((ev,i)=>{
+      const x=pad.l+(i/(Math.max(events.length-1,1)||1))*cw;
+      const y=ev.sim_avg!==null&&ev.sim_avg!==undefined?pad.t+ch-((ev.sim_avg||50)/100*ch):pad.t+ch-10;
+      const clr=DRIFT_COLORS[ev.action]||'var(--text3)';
+      ctx.fillStyle=clr;
+      if(ev.action==='conflict_resolve'){
+        ctx.beginPath();
+        ctx.moveTo(x,y-4);ctx.lineTo(x+3,y);ctx.lineTo(x,y+4);ctx.lineTo(x-3,y);ctx.closePath();
+        ctx.fill()
+      }else if(ev.action==='weak_reply'){
+        ctx.beginPath();ctx.moveTo(x,y-4);ctx.lineTo(x+3,y+2);ctx.lineTo(x-3,y+2);ctx.closePath();ctx.fill()
+      }else if(ev.action==='gold_export'){
+        ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill()
+      }else{
+        ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()
+      }
+    })
+  }
+  ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='7px sans-serif';
+  if(simTrend.length>1){
+    ctx.fillText('Time \u2192',pad.l+cw/2,pad.t+ch+16)
+  }
+  canvas.style.display='block'
+}
+
+$('#driftBtn').onclick=loadDrift;
 
 function parseBlendWeights(val){
   const w={};val.split('+').forEach(p=>{const[m,n]=p.split(':');if(m&&n)w[m]=parseInt(n)});return w

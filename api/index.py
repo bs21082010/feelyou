@@ -66,6 +66,7 @@ FEWSHOT_PATH = os.path.join(HERE, "fewshot_dataset.jsonl")
 USER_WEAK_REPLIES: dict = defaultdict(int)
 USER_GOLD_EXPORTS: dict = defaultdict(int)
 USER_ANALYTICS_HISTORY: dict = defaultdict(list)
+PERSONA_DRIFT_LOG: list = []
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -129,6 +130,18 @@ def decay_weights(w: dict):
 
 def predictive_intent_boost(intent: str) -> dict:
     return {}
+
+
+def record_persona_drift(user_id: str, action_type: str, weights: dict = None, sim_avg: float = None):
+    now = datetime.now().isoformat()
+    snap = dict(weights) if weights else {}
+    PERSONA_DRIFT_LOG.append({
+        "timestamp": now,
+        "user_id": user_id,
+        "action": action_type,
+        "weights": snap,
+        "sim_avg": sim_avg,
+    })
 
 
 def apply_template(user_input: str, dynamic_weights: dict = None) -> str:
@@ -348,6 +361,8 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             "timestamp": datetime.now().isoformat(),
             "weak_count": WEAK_REPLY_COUNT,
         })
+        drift_avg = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+        record_persona_drift(user_id, "weak_reply", weights, drift_avg)
     LAST_REPLY = reply if LAST_REPLY is None else LAST_REPLY
     LAST_SCORE = score if LAST_SCORE is None else LAST_SCORE
 
@@ -444,13 +459,15 @@ async def trigger_sync(req: Request):
         "conflict_count": len(USER_CONFLICTS[user_id]),
         "status": "active",
     }
+    avg_c = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+    record_persona_drift(user_id, "sync", sim_avg=avg_c)
     return {
         "status": "ok",
         "synced_at": LAST_SYNC_TIME,
         "sync_count": SYNC_COUNT,
         "total_scores": len(RECENT_SCORES),
         "weak_count": WEAK_REPLY_COUNT,
-        "avg_confidence": round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None,
+        "avg_confidence": avg_c,
         "user_id": user_id,
         "contributor": CONTRIBUTORS[user_id],
     }
@@ -784,6 +801,8 @@ async def run_simulation(data: dict):
             "persona": blend["persona"],
             "rounds_data": rounds_data,
         })
+    avg_all = round(sum(r["avg_confidence"] for r in results) / len(results), 1) if results else None
+    record_persona_drift("simulation", "simulate", sim_avg=avg_all)
     return {"results": results, "rounds": rounds, "total_prompts": rounds * len(blends)}
 
 
@@ -834,6 +853,8 @@ async def federated_simulate(data: dict):
             "sim_weak_count": total_weaks,
             "sim_best_intent": intents.most_common(1)[0][0] if intents else "none",
         })
+    fed_avg = round(sum(u["sim_avg_confidence"] for u in user_results) / len(user_results), 1) if user_results else None
+    record_persona_drift("federated", "federated_simulate", sim_avg=fed_avg)
     return {"results": user_results, "rounds": rounds, "total_users": len(users)}
 
 
@@ -846,7 +867,57 @@ async def record_gold_export(data: dict, req: Request):
     USER_ANALYTICS_HISTORY[user_id].append(record)
     if user_id in CONTRIBUTORS:
         CONTRIBUTORS[user_id]["gold_exports"] = USER_GOLD_EXPORTS[user_id]
+    record_persona_drift(user_id, "gold_export")
     return {"status": "ok", "user_id": user_id, "total_gold": USER_GOLD_EXPORTS[user_id]}
+
+
+@app.get("/api/persona-drift")
+async def persona_drift():
+    by_user = defaultdict(list)
+    timeline = []
+    for entry in PERSONA_DRIFT_LOG:
+        tl = {
+            "timestamp": entry["timestamp"],
+            "user_id": entry["user_id"],
+            "action": entry["action"],
+            "sim_avg": entry["sim_avg"],
+            "weights": entry["weights"],
+        }
+        timeline.append(tl)
+        by_user[entry["user_id"]].append(tl)
+    influence = {}
+    for uid, logs in sorted(by_user.items()):
+        weights_before = {}
+        weights_after = {}
+        for i, lg in enumerate(logs):
+            if lg["weights"]:
+                weights_after = dict(lg["weights"])
+                if not weights_before:
+                    weights_before = dict(lg["weights"])
+        if not weights_before and not weights_after:
+            continue
+        drift = {}
+        all_keys = set(weights_before.keys()) | set(weights_after.keys())
+        for k in sorted(all_keys):
+            before = weights_before.get(k, 50)
+            after = weights_after.get(k, 50)
+            diff = round(after - before, 1)
+            if diff != 0:
+                drift[k] = diff
+        if drift or len(logs) > 0:
+            influence[uid] = {
+                "events": len(logs),
+                "last_action": logs[-1]["action"] if logs else None,
+                "weight_drift": drift,
+                "total_sims": sum(1 for lg in logs if "simulate" in lg["action"]),
+            }
+    sim_avg_trend = [{"timestamp": e["timestamp"], "value": e["sim_avg"], "user_id": e["user_id"]} for e in PERSONA_DRIFT_LOG if e["sim_avg"] is not None]
+    return {
+        "timeline": timeline[-100:],
+        "influence": influence,
+        "sim_avg_trend": sim_avg_trend[-50:],
+        "total_events": len(PERSONA_DRIFT_LOG),
+    }
 
 
 @app.get("/api/contributors")
@@ -927,6 +998,7 @@ async def record_conflict_resolution(data: dict, req: Request):
             "conflict_count": len(USER_CONFLICTS[user_id]),
             "status": "active",
         }
+    record_persona_drift(user_id, "conflict_resolve")
     return {"status": "ok", "method": method, "user_id": user_id}
 
 
