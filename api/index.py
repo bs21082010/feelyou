@@ -189,16 +189,22 @@ MOCK_REPLIES = {
         "You've got this! Every step forward, no matter how small, builds momentum. The fact that you're here asking shows you're already committed to growth. Keep your eyes on the goal, break it down into daily actions, and celebrate each win along the way. I believe in you!",
         "I hear you, and it's okay to feel the way you do. What matters is that you're still showing up. Let's channel that energy into one small, concrete action you can take right now. Progress isn't about giant leaps — it's about consistent steps.",
         "The very act of reaching out tells me you have the drive to move forward. Motivation isn't a feeling you wait for — it's a muscle you build. Let's start with something small and build from there. You're stronger than you think.",
+        "It takes courage to ask for motivation when you're struggling. That's already a win. Now let's build on that momentum. What's one thing you used to enjoy that you haven't done lately? Start there.",
+        "Let me tell you something important: you don't need to be motivated every single day. You just need to be consistent. Motivation follows action, not the other way around. Take one small step and the rest will follow.",
     ],
     "explain": [
         "Great question! Let me break this down simply. Think of it like building blocks — each concept builds on the previous one. Start with the core idea, understand how the pieces connect, and before you know it, the bigger picture becomes clear. Would you like me to go deeper on any specific part?",
         "That's a really good question. Here's the simplest way to think about it: imagine you're learning a new language. You don't start with complex sentences — you start with single words, then phrases, then full conversations. Same idea here. Let me walk you through it step by step.",
         "I love questions like this. The key insight is actually pretty straightforward once you strip away the jargon. At its core, this is about connecting two ideas: cause and effect. Here's a real-world example that makes it click.",
+        "Great question. The easiest way to understand this is through an analogy. Think of it like a recipe: you have ingredients (inputs), steps (process), and a final dish (output). Each part depends on the one before it. Let me apply that framework to what you're asking.",
+        "This is one of those concepts that seems complex until you see the pattern underneath. Let me show you the simplest version first, then we'll add layers one at a time. Ready? Here's the core idea in one sentence.",
     ],
     "advise": [
         "Here's my take: take a step back and look at what's really important here. Focus on what you can control, set clear boundaries, and remember that progress matters more than perfection. I'd suggest starting with one small actionable step today. What does that look like for you?",
         "That's a tough spot to be in, and I respect you for working through it. Let me offer a different lens: instead of asking 'what's the right choice,' ask 'which option teaches me more, regardless of the outcome?' Growth often hides in the harder path.",
         "I've seen this pattern before. The best approach is usually to separate what you can control from what you can't. Make a quick list of both. Then put your energy entirely into the things you can influence. You'd be surprised how much clarity that brings.",
+        "When you're in the middle of a hard decision, it's easy to feel like there's a 'right' answer you're missing. But most big decisions don't have a right answer — they have a right approach. Pick the option that aligns with your values and commit to making it work.",
+        "Let's try a technique I recommend: write down the pros and cons for each option, then rate them by emotional weight, not just logical weight. Often we know what we want but logic talks us out of it. Your feelings are data too.",
     ],
 }
 MOCK_GENERAL = [
@@ -212,16 +218,23 @@ MOCK_GENERAL = [
     "That's a valuable insight you're touching on. The fact that you're reflecting on this shows a lot of self-awareness. Let's build on that.",
     "I think what you're really asking is deeper than it appears on the surface. Let me reframe it a bit and see if we can find the underlying thread together.",
     "That resonates with a lot of people. You're not alone in feeling this way. The key isn't to have all the answers — it's to ask better questions.",
+    "I'd love to dig into that with you. Every good conversation starts with a question, and yours is a great starting point. Let me share a thought and you tell me if it lands.",
+    "That's exactly the kind of thinking that leads to real breakthroughs. Most people stay on the surface — you're going deeper. Let's follow that thread.",
+    "I've reflected on this quite a bit, and here's what I've found: the best answers usually come from asking slightly different questions. Let's try reframing yours and see what emerges.",
+    "You know, that reminds me of something important: progress isn't about having all the answers before you start. It's about starting before you're ready and learning as you go.",
+    "There's real wisdom in what you're saying. Sometimes the most powerful thing we can do is sit with a question instead of rushing to an answer. Let's do that together.",
 ]
 
-import random
 
 def generate_mock_reply(user_message: str, persona_name: str) -> str:
+    h = sum(ord(c) * (i + 1) for i, c in enumerate(user_message))
     intent = detect_intent(user_message)
     if intent and intent in MOCK_REPLIES:
-        base = random.choice(MOCK_REPLIES[intent])
+        pool = MOCK_REPLIES[intent]
+        base = pool[h % len(pool)]
     else:
-        base = random.choice(MOCK_GENERAL)
+        pool = MOCK_GENERAL
+        base = pool[h % len(pool)]
     if "coach" in persona_name:
         base += " Now, what's your next step going to be?"
     elif "teacher" in persona_name:
