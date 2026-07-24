@@ -64,7 +64,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div><canvas id="covCanvas" style="display:none;width:100%;height:80px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Escalation Reinforce</label><div id="escStatus" class="stat">No data</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="escReinfBtn" style="background:var(--red);color:var(--bg);font-size:10px">🔁 Reinforce Patterns</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift Overlay <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
@@ -274,8 +274,9 @@ nb.onclick=async()=>{
   try{
     const r2=await fetch(API+'/sync',{method:'POST',headers:headers()});const d=await r2.json();
     ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
-    const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'.';
-    speakText(nar);addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' responses, '+d.weak_count+' weak, avg '+d.avg_confidence);
+    const dc=d.dataset_changes||{};
+    const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'. '+(dc.fewshot_entries_added?' '+dc.fewshot_entries_added+' new few-shot entries.':'')+(dc.conflicts_resolved?' '+dc.conflicts_resolved+' conflicts resolved.':'')+(dc.gold_exports?' '+dc.gold_exports+' gold exports.':'');
+    speakText(nar);addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' resp, '+d.weak_count+' weak, avg '+d.avg_confidence+(dc.fewshot_entries_added?' \u2022 +'+dc.fewshot_entries_added+' fewshot':'')+(dc.conflicts_resolved?' \u2022 \u2694\uFE0Fx'+dc.conflicts_resolved:'')+(dc.gold_exports?' \u2022 \u2B50x'+dc.gold_exports:''));
     await narrateTraining();await narrateContributors();await refreshContributors()
   }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
 };
@@ -375,16 +376,24 @@ fsb.onclick=async()=>{
     const r=await fetch(API+'/federated-simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds})});
     const d=await r.json();
     if(!d.results.length){sr.innerHTML='No contributors found';return}
-    let html='<div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:2px 4px;font-size:10px;margin-top:4px">';
-    html+='<b>User</b><b style="text-align:right">Avg</b><b style="text-align:right">Esc</b><b style="text-align:right">Weak%</b>';
-    d.results.forEach(r2=>{
-      html+='<span style="color:'+(r2.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r2.sync_count?'\u25CF ':'\u25CB ')+r2.user_id+'</span>';
-      html+='<span style="text-align:right;color:'+(r2.sim_avg_confidence>=70?'var(--green)':r2.sim_avg_confidence>=50?'var(--yellow)':'var(--red)')+'">'+r2.sim_avg_confidence+'%</span>';
-      html+='<span style="text-align:right">'+r2.sim_escalations+'</span>';
-      html+='<span style="text-align:right;color:'+(parseFloat(r2.sim_weak_ratio)<20?'var(--green)':parseFloat(r2.sim_weak_ratio)<40?'var(--yellow)':'var(--red)')+'">'+r2.sim_weak_ratio+'</span>'
+    let html='<div style="font-size:10px;margin:2px 0">';
+    if(d.ranked){html+='<b>Rankings</b><div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:2px 4px;font-size:9px">';
+    html+='<span>#</span><b>User</b><b style="text-align:right">Avg</b><b style="text-align:right">Esc</b><b style="text-align:right">Weak%</b>';
+    d.ranked.forEach(r3=>{
+      html+='<span style="color:'+(r3.rank===1?'var(--yellow)':'var(--text3)')+'">#'+r3.rank+'</span>';
+      html+='<span style="color:'+(r3.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r3.user_id.length>8?r3.user_id.substr(0,7)+'\u2026':r3.user_id)+'</span>';
+      html+='<span style="text-align:right;color:'+(r3.avg_confidence>=70?'var(--green)':r3.avg_confidence>=50?'var(--yellow)':'var(--red)')+'">'+r3.avg_confidence+'%</span>';
+      html+='<span style="text-align:right">'+r3.escalations+'</span>';
+      html+='<span style="text-align:right;color:'+(parseFloat(r3.weak_ratio)<20?'var(--green)':parseFloat(r3.weak_ratio)<40?'var(--yellow)':'var(--red)')+'">'+r3.weak_ratio+'</span>'
     });
-    html+='</div><div style="font-size:9px;color:var(--text3);margin-top:2px">'+d.total_users+' users &bull; '+rounds+' rounds each</div>';
-    sr.innerHTML=html;addControl('Federated sim: '+d.total_users+' users, '+d.rounds+' rounds each')
+    html+='</div></div>'}
+    html+='<div style="font-size:9px;color:var(--text3);margin-top:2px">'+d.total_users+' users &bull; '+rounds+' rounds each &bull; avg '+d.fed_avg+'%</div>';
+    html+='<div style="max-height:80px;overflow-y:auto;margin-top:4px;font-size:8px;color:var(--text3)">';
+    d.results.forEach(r2=>{
+      html+='<span style="color:'+(r2.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r2.custom_weights?'\u2699 ':'\u25CB ')+r2.user_id+': '+r2.sim_avg_confidence+'% esc:'+r2.sim_escalations+' weak:'+r2.sim_weak_ratio+(r2.blend_scores?' ['+r2.blend_scores.map(bs=>bs.blend.substr(0,6)+':'+bs.avg+'%').join(' ')+']':'')+'</span><br>'
+    });
+    html+='</div>';
+    sr.innerHTML=html;addControl('Fed sim: '+d.total_users+' users, '+d.rounds+' rounds, avg '+d.fed_avg+'%')
   }catch(e){sr.innerHTML='Error: '+e.message}
 };
 
@@ -500,9 +509,49 @@ function parseBlendWeights(val){
 async function refreshAdaptive(){
   try{
     const r=await fetch(API+'/adaptive-status');const d=await r.json();
-    as_.innerHTML='Few-shot: <b>'+d.total_fewshot+'</b> &bull; Intents: <b>'+(d.intents_covered.join(', ')||'none')+'</b>';
-    ah.innerHTML=d.history.slice(-3).reverse().map(e=>'<span style="color:var(--yellow)">\u26A1</span> auto-reinforced <b>'+e.intent+'</b> ('+e.weak_rate+'% weak) &bull; '+new Date(e.generated_at).toLocaleTimeString()).join('<br>')
+    const escStr=d.escalation_intent_counts?Object.entries(d.escalation_intent_counts).map(([k,v])=>k+':'+v).join(', '):'none';
+    as_.innerHTML='Few-shot: <b>'+d.total_fewshot+'</b> &bull; Intents: <b>'+(d.intents_covered.join(', ')||'none')+'</b> &bull; Esc intents: <span style="color:var(--red)">'+escStr+'</span>';
+    ah.innerHTML=d.history.slice(-3).reverse().map(e=>'<span style="color:var(--yellow)">\u26A1</span> '+(e.type||'auto')+' <b>'+e.intent+'</b> ('+((e.weak_rate||'')+' '+(e.escalation_count||'')).trim()+(e.pattern?' pat:'+e.pattern:'')+') &bull; '+new Date(e.generated_at).toLocaleTimeString()).join('<br>');
+    drawCovChart($('#covCanvas'),d.coverage_history)
   }catch(e){as_.innerHTML='Offline'}
+}
+
+function drawCovChart(canvas, history){
+  if(!history||history.length<2){canvas.style.display='none';return}
+  const ctx=canvas.getContext('2d');
+  const W=canvas.parentElement.clientWidth-4||220,H=80;
+  canvas.width=W*2;canvas.height=H*2;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  canvas.style.display='block';
+  ctx.scale(2,2);
+  const pad={t:10,b:14,l:24,r:8};
+  const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
+  const maxFshot=Math.max(...history.map(h=>h.total_fewshot),5);
+  for(let i=0;i<=3;i++){
+    const y=pad.t+ch-(i/3*ch),v=Math.round(i/3*maxFshot);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
+    ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y+2)
+  }
+  ctx.beginPath();ctx.strokeStyle='var(--green)';ctx.lineWidth=1.5;
+  history.forEach((pt,i)=>{
+    const x=pad.l+(i/(history.length-1))*cw;
+    const y=pad.t+ch-(pt.total_fewshot/maxFshot*ch);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+  });ctx.stroke();
+  history.forEach((pt,i)=>{
+    const x=pad.l+(i/(history.length-1))*cw;
+    const y=pad.t+ch-(pt.total_fewshot/maxFshot*ch);
+    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
+    ctx.fillStyle='var(--green)';ctx.fill()
+  });
+  const thresholdY=pad.t+ch-(30/maxFshot*ch);
+  ctx.beginPath();ctx.setLineDash([2,2]);ctx.moveTo(pad.l,thresholdY);ctx.lineTo(W-pad.r,thresholdY);
+  ctx.strokeStyle='var(--yellow)';ctx.lineWidth=0.5;ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='var(--yellow)';ctx.textAlign='left';ctx.fillText('threshold',pad.l+2,thresholdY-2);
+  ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
+  ctx.fillText('# few-shot \u2192',pad.l+cw/2,pad.t+ch+12);
 }
 
 abtn.onclick=async()=>{

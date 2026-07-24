@@ -62,6 +62,11 @@ CONTRIBUTORS: dict = {}
 FEWSHOT_DATASET: list = []
 AUTO_REINFORCED_INTENTS: set = set()
 ADAPTIVE_HISTORY: list = []
+COVERAGE_HISTORY: list = []
+INTENT_ESCALATION_COUNTER: dict = defaultdict(int)
+PREV_FEWSHOT_COUNT = 0
+PREV_CONFLICT_COUNT = 0
+PREV_GOLD_COUNT = 0
 FEWSHOT_PATH = os.path.join(HERE, "fewshot_dataset.jsonl")
 USER_WEAK_REPLIES: dict = defaultdict(int)
 USER_GOLD_EXPORTS: dict = defaultdict(int)
@@ -379,6 +384,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         })
         intent_key = intent or "general"
         WEAK_INTENT_COUNTER[intent_key] = WEAK_INTENT_COUNTER.get(intent_key, 0) + 1
+        INTENT_ESCALATION_COUNTER[intent_key] += 1
 
     if weights:
         normalize_weights(weights)
@@ -445,7 +451,7 @@ async def sync_status():
 
 @app.post("/api/sync")
 async def trigger_sync(req: Request):
-    global LAST_SYNC_TIME, LAST_SYNC_STATUS, SYNC_COUNT
+    global LAST_SYNC_TIME, LAST_SYNC_STATUS, SYNC_COUNT, PREV_FEWSHOT_COUNT, PREV_CONFLICT_COUNT, PREV_GOLD_COUNT
     user_id = req.headers.get("X-User-Id") or "anonymous"
     SYNC_COUNT += 1
     LAST_SYNC_TIME = datetime.now().isoformat()
@@ -461,6 +467,12 @@ async def trigger_sync(req: Request):
     }
     avg_c = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
     record_persona_drift(user_id, "sync", sim_avg=avg_c)
+    new_fewshot = len(FEWSHOT_DATASET) - PREV_FEWSHOT_COUNT
+    new_conflicts = len(CONFLICT_RESOLUTIONS) - PREV_CONFLICT_COUNT
+    new_gold = sum(USER_GOLD_EXPORTS.values()) - PREV_GOLD_COUNT
+    PREV_FEWSHOT_COUNT = len(FEWSHOT_DATASET)
+    PREV_CONFLICT_COUNT = len(CONFLICT_RESOLUTIONS)
+    PREV_GOLD_COUNT = sum(USER_GOLD_EXPORTS.values())
     return {
         "status": "ok",
         "synced_at": LAST_SYNC_TIME,
@@ -470,6 +482,11 @@ async def trigger_sync(req: Request):
         "avg_confidence": avg_c,
         "user_id": user_id,
         "contributor": CONTRIBUTORS[user_id],
+        "dataset_changes": {
+            "fewshot_entries_added": max(0, new_fewshot),
+            "conflicts_resolved": max(0, new_conflicts),
+            "gold_exports": max(0, new_gold),
+        },
     }
 
 
@@ -629,6 +646,13 @@ async def adaptive_reinforce(data: dict = {}):
         AUTO_REINFORCED_INTENTS.add(intent_key)
         ADAPTIVE_HISTORY.append(entry)
         added.append(entry)
+    COVERAGE_HISTORY.append({
+        "timestamp": datetime.now().isoformat(),
+        "total_fewshot": len(FEWSHOT_DATASET),
+        "auto_reinforced": sorted(AUTO_REINFORCED_INTENTS),
+        "escalation_reinforced": sorted(ESCALATION_REINFORCED),
+        "intents_covered": sorted(set(e["intent"] for e in FEWSHOT_DATASET)),
+    })
     save_fewshot()
     messages = []
     if added:
@@ -652,7 +676,9 @@ async def adaptive_status():
         "total_fewshot": len(FEWSHOT_DATASET),
         "intents_covered": covered_list,
         "auto_reinforced_intents": sorted(AUTO_REINFORCED_INTENTS),
+        "escalation_intent_counts": dict(sorted(INTENT_ESCALATION_COUNTER.items(), key=lambda x: -x[1])),
         "history": ADAPTIVE_HISTORY[-10:],
+        "coverage_history": COVERAGE_HISTORY[-30:],
     }
 
 
@@ -694,12 +720,39 @@ async def escalation_reinforce(data: dict = {}):
         ESCALATION_REINFORCED.add(key)
         ADAPTIVE_HISTORY.append({**entry, "type": "escalation_reinforce"})
         added.append(entry)
+    for intent, total_count in sorted(INTENT_ESCALATION_COUNTER.items(), key=lambda x: -x[1]):
+        key = f"intent_{intent}"
+        if key in ESCALATION_REINFORCED:
+            continue
+        if total_count < 2:
+            continue
+        template = ESCALATION_TEMPLATES.get(intent, ESCALATION_TEMPLATES["general"])
+        entry = {
+            "intent": intent,
+            "tier": "any",
+            "escalation_count": total_count,
+            "pattern": key,
+            "prompt": template["prompt"],
+            "completion": template["completion"],
+            "generated_at": datetime.now().isoformat(),
+        }
+        FEWSHOT_DATASET.append(entry)
+        ESCALATION_REINFORCED.add(key)
+        ADAPTIVE_HISTORY.append({**entry, "type": "escalation_reinforce"})
+        added.append(entry)
+    COVERAGE_HISTORY.append({
+        "timestamp": datetime.now().isoformat(),
+        "total_fewshot": len(FEWSHOT_DATASET),
+        "auto_reinforced": sorted(AUTO_REINFORCED_INTENTS),
+        "escalation_reinforced": sorted(ESCALATION_REINFORCED),
+        "intents_covered": sorted(set(e["intent"] for e in FEWSHOT_DATASET)),
+    })
     save_fewshot()
     if added:
-        messages = [f"Escalation-reinforced '{a['intent']}' tier {a['tier']} ({a['escalation_count']} events)." for a in added]
+        messages = [f"Escalation-reinforced '{a['intent']}' (pattern {a['pattern']}, {a['escalation_count']} events)." for a in added]
     else:
         messages = ["No escalation patterns to reinforce — all covered or below threshold."]
-    return {"reinforced": len(added), "total_fewshot": len(FEWSHOT_DATASET), "messages": messages, "added": [{"intent": a["intent"], "tier": a["tier"], "count": a["escalation_count"]} for a in added]}
+    return {"reinforced": len(added), "total_fewshot": len(FEWSHOT_DATASET), "messages": messages, "added": [{"intent": a["intent"], "tier": a.get("tier", "any"), "count": a["escalation_count"]} for a in added]}
 
 
 @app.get("/api/escalation-status")
@@ -819,19 +872,33 @@ async def federated_simulate(data: dict):
     user_results = []
     for uid in users:
         c = CONTRIBUTORS.get(uid, {})
+        drift_logs = [e for e in PERSONA_DRIFT_LOG if e["user_id"] == uid and e["weights"]]
+        last_weights = drift_logs[-1]["weights"] if drift_logs else None
         blends = DEFAULT_SIMULATION_BLENDS
-        if c.get("sync_count", 0) > 0:
+        if last_weights:
+            blends = [
+                {"name": "User-weighted", "persona": "mentor:{}".format(
+                    last_weights.get("mentor", 50)) + "+coach:{}".format(
+                    last_weights.get("coach", 0)) + "+teacher:{}".format(
+                    last_weights.get("teacher", 0)),
+                    "weights": last_weights},
+                {"name": "Balanced", "persona": "mentor:34+coach:33+teacher:33",
+                 "weights": {"mentor": 34, "coach": 33, "teacher": 33}},
+            ]
+        elif c.get("sync_count", 0) > 0:
             blends = DEFAULT_SIMULATION_BLENDS[:3]
         scores = []
         total_escs = 0
         total_weaks = 0
         intents = Counter()
+        blend_scores = []
         for blend in blends:
-            dy = dict(blend.get("weights", {}))
+            b_scores = []
             for i in range(rounds):
                 prompt = SIMULATION_PROMPTS[i % len(SIMULATION_PROMPTS)]
                 reply, _ = generate_mock_reply(prompt, blend["persona"])
                 score = score_reply(reply)
+                b_scores.append(score)
                 scores.append(score)
                 intent = detect_intent(prompt)
                 if intent:
@@ -840,6 +907,7 @@ async def federated_simulate(data: dict):
                     total_weaks += 1
                 if score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:]):
                     total_escs += 1
+            blend_scores.append({"blend": blend["name"], "avg": round(sum(b_scores) / len(b_scores), 1) if b_scores else 0})
         total_prompts = rounds * len(blends)
         user_results.append({
             "user_id": uid,
@@ -852,10 +920,23 @@ async def federated_simulate(data: dict):
             "sim_weak_ratio": f"{round(total_weaks / total_prompts * 100, 1)}%" if total_prompts else "0%",
             "sim_weak_count": total_weaks,
             "sim_best_intent": intents.most_common(1)[0][0] if intents else "none",
+            "blend_scores": blend_scores,
+            "custom_weights": bool(last_weights),
         })
+    ranked = sorted(user_results, key=lambda u: u["sim_avg_confidence"], reverse=True)
     fed_avg = round(sum(u["sim_avg_confidence"] for u in user_results) / len(user_results), 1) if user_results else None
     record_persona_drift("federated", "federated_simulate", sim_avg=fed_avg)
-    return {"results": user_results, "rounds": rounds, "total_users": len(users)}
+    return {
+        "results": user_results,
+        "ranked": [
+            {"rank": i + 1, "user_id": u["user_id"], "avg_confidence": u["sim_avg_confidence"],
+             "escalations": u["sim_escalations"], "weak_ratio": u["sim_weak_ratio"]}
+            for i, u in enumerate(ranked)
+        ],
+        "rounds": rounds,
+        "total_users": len(users),
+        "fed_avg": fed_avg,
+    }
 
 
 @app.post("/api/gold-export")
