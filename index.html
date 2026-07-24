@@ -61,17 +61,18 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   <button class="toggle-controls" id="toggleCtrl">▼ Controls</button>
   <div class="controls-panel" id="controlsPanel">
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Weights</label><div id="weights"></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Dashboard <button class="btn" id="dashBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Refresh</button></label><canvas id="dashCanvas" style="display:none;width:100%;height:60px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="dashPanel" class="stat" style="font-size:9px;line-height:1.5">Loading...</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Dashboard <button class="btn" id="dashBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳</button><button class="btn" id="dashNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Auto</button></label><canvas id="dashCanvas" style="display:none;width:100%;height:60px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="dashPanel" class="stat" style="font-size:9px;line-height:1.5">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div><canvas id="covCanvas" style="display:none;width:100%;height:80px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Tuning <button class="btn" id="tuneBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Analyze</button></label><div id="tunePanel" class="stat" style="font-size:9px;max-height:40px;overflow-y:auto">Run analysis to see suggested persona weight changes</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Escalation Reinforce</label><div id="escStatus" class="stat">No data</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="escReinfBtn" style="background:var(--red);color:var(--bg);font-size:10px">🔁 Reinforce Patterns</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors <button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Leaderboard</label><div id="leaderboardPanel" class="stat" style="font-size:9px;max-height:80px;overflow-y:auto">Loading...</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Leaderboard <button class="btn" id="impactNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Impact</button></label><div id="leaderboardPanel" class="stat" style="font-size:9px;max-height:80px;overflow-y:auto">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
@@ -401,7 +402,9 @@ fsb.onclick=async()=>{
     html+='<div style="font-size:9px;color:var(--text3);margin-top:2px">'+d.total_users+' users &bull; '+rounds+' rounds each &bull; avg '+d.fed_avg+'%</div>';
     html+='<div style="max-height:80px;overflow-y:auto;margin-top:4px;font-size:8px;color:var(--text3)">';
     d.results.forEach(r2=>{
-      html+='<span style="color:'+(r2.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r2.custom_weights?'\u2699 ':'\u25CB ')+r2.user_id+': '+r2.sim_avg_confidence+'% esc:'+r2.sim_escalations+' weak:'+r2.sim_weak_ratio+(r2.blend_scores?' ['+r2.blend_scores.map(bs=>bs.blend.substr(0,6)+':'+bs.avg+'%').join(' ')+']':'')+'</span><br>'
+      const escRate=r2.sim_escalation_rate||0;
+      const escBar=Math.min(escRate/2,20);
+      html+='<span style="color:'+(r2.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r2.custom_weights?'\u2699 ':'\u25CB ')+r2.user_id+': '+r2.sim_avg_confidence+'% esc:'+r2.sim_escalations+'('+escRate+'%) weak:'+r2.sim_weak_ratio+(r2.blend_scores?' ['+r2.blend_scores.map(bs=>bs.blend.substr(0,6)+':'+bs.avg+'%').join(' ')+']':'')+'</span><div style="height:3px;width:100%;background:var(--surface3);border-radius:2px;margin:1px 0"><div style="height:100%;width:'+escBar+'%;background:var(--red);border-radius:2px"></div></div>'
     });
     html+='</div>';
     sr.innerHTML=html;addControl('Fed sim: '+d.total_users+' users, '+d.rounds+' rounds, avg '+d.fed_avg+'%')
@@ -516,6 +519,7 @@ $('#driftNarrBtn').onclick=async()=>{
   try{const r=await fetch(API+'/drift-narration');const d=await r.json();addControl('Drift: '+d.narration);speakText(d.narration,'reflection')}catch(e){}
 };
 
+let dashNarrate=0;
 async function refreshDashboard(){
   const canvas=$('#dashCanvas'),panel=$('#dashPanel');
   try{
@@ -528,6 +532,12 @@ async function refreshDashboard(){
     const top=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].user_id:'—';
     const fshot=dch.total_fewshot||0,esc=dch.total_escalations||0;
     const mode=dh.mode||'offline';
+    const topScore=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].score:'—';
+    const online=dh.has_api_key||mode==='local';
+    if(dashNarrate&&avg!=='N/A'){
+      const nar='Dashboard: average confidence '+avg+' percent, '+low+' consecutive low scores, '+fshot+' few-shot examples, '+esc+' escalations, leader is '+top+' with '+topScore+' points. '+(online?'System is online.':'Using mock replies.');
+      speakText(nar,'reflection',true)
+    }
     panel.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 6px;font-size:9px">'+
       '<span>Avg conf</span><span style="text-align:right;color:'+(avg>=70?'var(--green)':avg>=50?'var(--yellow)':'var(--red)')+'"><b>'+avg+'%</b></span>'+
       '<span>Consec low</span><span style="text-align:right;color:'+(low>=3?'var(--red)':'var(--text2)')+'">'+low+'</span>'+
@@ -563,6 +573,7 @@ async function refreshDashboard(){
 }
 
 $('#dashBtn').onclick=refreshDashboard;
+$('#dashNarrBtn').onclick=()=>{dashNarrate=!dashNarrate;$('#dashNarrBtn').style.background=dashNarrate?'var(--green)':'var(--surface3)';$('#dashNarrBtn').textContent=dashNarrate?'\uD83D\uDD0A On':'🔊 Auto';if(dashNarrate)refreshDashboard()};
 
 function parseBlendWeights(val){
   const w={};val.split('+').forEach(p=>{const[m,n]=p.split(':');if(m&&n)w[m]=parseInt(n)});return w
@@ -670,6 +681,22 @@ async function refreshLeaderboard(){
       }).join('')+'</div>'
   }catch(e){}
 }
+
+$('#impactNarrBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/contributor-impact');const d=await r.json();addControl('Impact: '+d.narration);speakText(d.narration,'encouragement')}catch(e){}
+};
+
+$('#tuneBtn').onclick=async()=>{
+  const tp=$('#tunePanel');tp.innerHTML='Analyzing...';
+  try{
+    const r=await fetch(API+'/adaptive-tuning');const d=await r.json();
+    const adj=d.suggested_adjustments||{};
+    const drift=d.current_drift||{};
+    tp.innerHTML=(d.messages.length?d.messages.join('<br>'):'No adjustments')+'<br><span style="font-size:8px;color:var(--text3)">Drift: '+
+      Object.entries(drift).map(([k,v])=>k+':'+(v>0?'+':'')+v).join(', ')+
+      (Object.keys(adj).length?' | Suggested: '+Object.entries(adj).map(([k,v])=>k+'+'+v).join(', '):'')+'</span>'
+  }catch(e){tp.innerHTML='Error: '+e.message}
+};
 
 async function refreshHybridMode(){
   try{

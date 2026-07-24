@@ -803,6 +803,90 @@ async def leaderboard():
     return {"leaderboard": ranked, "total": len(ranked)}
 
 
+@app.get("/api/contributor-impact")
+async def contributor_impact():
+    lb_resp = await leaderboard()
+    entries = lb_resp.get("leaderboard", [])
+    if not entries:
+        return {"narration": "No contributors recorded yet."}
+    parts = []
+    top = entries[0]
+    badge_names = {"\U0001F3C6": "Trophy", "\U0001F947": "Gold", "\U0001F948": "Silver", "\u2B50": "Star", "\U0001F504": "Syncer", "\u2705": "Clean", "\u26A1": "Energizer", "\U0001F3A4": "Narrator", "\U0001F9E9": "Strategist", "\U0001F91D": "Diplomat", "\U0001F31F": "Pioneer"}
+    top_badges = [badge_names.get(b, b) for b in top["badges"] if b]
+    parts.append(f"{top['user_id']} is leading with {top['score']} points" + (f", earning {', '.join(top_badges)} badges" if top_badges else "") + ".")
+    if len(entries) > 1:
+        second = entries[1]
+        parts.append(f"{second['user_id']} is second with {second['score']} points.")
+    if len(entries) > 2:
+        third = entries[2]
+        parts.append(f"{third['user_id']} rounds out the top three with {third['score']} points.")
+    total_events = sum(e["events"] for e in entries)
+    total_syncs = sum(e["syncs"] for e in entries)
+    if total_events:
+        parts.append(f"Across {len(entries)} contributors: {total_syncs} total syncs, {total_events} drift events logged.")
+    return {"narration": "Contributor impact. " + " ".join(parts), "leaderboard": entries[:5]}
+
+
+@app.get("/api/adaptive-tuning")
+async def adaptive_tuning():
+    suggested = {}
+    drift_mentor_deltas = []
+    drift_coach_deltas = []
+    drift_teacher_deltas = []
+    drift_logs_with_weights = [e for e in PERSONA_DRIFT_LOG if e["weights"]]
+    if drift_logs_with_weights:
+        first_w = drift_logs_with_weights[0]["weights"]
+        last_w = drift_logs_with_weights[-1]["weights"]
+        for p in ["mentor", "coach", "teacher"]:
+            delta = last_w.get(p, 50) - first_w.get(p, 50)
+            if p == "mentor":
+                drift_mentor_deltas.append(delta)
+            elif p == "coach":
+                drift_coach_deltas.append(delta)
+            else:
+                drift_teacher_deltas.append(delta)
+    reinforced = set(e["intent"] for e in FEWSHOT_DATASET)
+    if "motivate" in reinforced:
+        suggested["coach"] = suggested.get("coach", 0) + 5
+    if "explain" in reinforced:
+        suggested["teacher"] = suggested.get("teacher", 0) + 5
+    if "advise" in reinforced:
+        suggested["mentor"] = suggested.get("mentor", 0) + 5
+    esc_intents = dict(INTENT_ESCALATION_COUNTER)
+    for intent, count in esc_intents.items():
+        if count >= 2 and intent == "motivate":
+            suggested["coach"] = suggested.get("coach", 0) + 3
+        elif count >= 2 and intent == "explain":
+            suggested["teacher"] = suggested.get("teacher", 0) + 3
+        elif count >= 2 and intent == "advise":
+            suggested["mentor"] = suggested.get("mentor", 0) + 3
+    if drift_mentor_deltas and drift_mentor_deltas[-1] < -5:
+        suggested["mentor"] = suggested.get("mentor", 0) + 8
+    if drift_coach_deltas and drift_coach_deltas[-1] < -5:
+        suggested["coach"] = suggested.get("coach", 0) + 8
+    if drift_teacher_deltas and drift_teacher_deltas[-1] < -5:
+        suggested["teacher"] = suggested.get("teacher", 0) + 8
+    messages = []
+    if suggested:
+        for p, adj in sorted(suggested.items(), key=lambda x: -x[1]):
+            messages.append(f"Boost {p} by {adj} points due to " + (
+                "reinforcement patterns" if any(p == k for k in ["coach", "teacher", "mentor"] if p == k and any(
+                    intent in reinforced for intent in {"motivate": "coach", "explain": "teacher", "advise": "mentor"}.get(p, set())
+                )) else "drift correction"
+            ))
+    else:
+        messages.append("No tuning needed — all personas are balanced.")
+    return {
+        "suggested_adjustments": suggested,
+        "current_drift": {
+            "mentor": drift_mentor_deltas[-1] if drift_mentor_deltas else 0,
+            "coach": drift_coach_deltas[-1] if drift_coach_deltas else 0,
+            "teacher": drift_teacher_deltas[-1] if drift_teacher_deltas else 0,
+        },
+        "messages": messages or ["No adjustments needed."],
+    }
+
+
 @app.get("/api/hybrid-mode")
 async def get_hybrid_mode():
     cloud_key = bool(os.environ.get("LLM_CLOUD_KEY"))
@@ -1048,6 +1132,7 @@ async def federated_simulate(data: dict):
         total_weaks = 0
         intents = Counter()
         blend_scores = []
+        round_esc = []
         for blend in blends:
             b_scores = []
             for i in range(rounds):
@@ -1061,8 +1146,10 @@ async def federated_simulate(data: dict):
                     intents[intent] += 1
                 if score < 50:
                     total_weaks += 1
-                if score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:]):
+                triggered = score < 50 and len(scores) >= 3 and all(s < 50 for s in scores[-3:])
+                if triggered:
                     total_escs += 1
+                round_esc.append(1 if triggered else 0)
             blend_scores.append({"blend": blend["name"], "avg": round(sum(b_scores) / len(b_scores), 1) if b_scores else 0})
         total_prompts = rounds * len(blends)
         user_results.append({
@@ -1073,11 +1160,13 @@ async def federated_simulate(data: dict):
             "gold_exports": USER_GOLD_EXPORTS.get(uid, 0),
             "sim_avg_confidence": round(sum(scores) / len(scores), 1) if scores else 0,
             "sim_escalations": total_escs,
+            "sim_escalation_rate": round(total_escs / total_prompts * 100, 1) if total_prompts else 0,
             "sim_weak_ratio": f"{round(total_weaks / total_prompts * 100, 1)}%" if total_prompts else "0%",
             "sim_weak_count": total_weaks,
             "sim_best_intent": intents.most_common(1)[0][0] if intents else "none",
             "blend_scores": blend_scores,
             "custom_weights": bool(last_weights),
+            "round_esc_cumulative": round_esc,
         })
     ranked = sorted(user_results, key=lambda u: u["sim_avg_confidence"], reverse=True)
     fed_avg = round(sum(u["sim_avg_confidence"] for u in user_results) / len(user_results), 1) if user_results else None
