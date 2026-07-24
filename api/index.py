@@ -73,6 +73,7 @@ USER_GOLD_EXPORTS: dict = defaultdict(int)
 USER_ANALYTICS_HISTORY: dict = defaultdict(list)
 PERSONA_DRIFT_LOG: list = []
 HYBRID_MODE = "local"
+HYBRID_OFFLINE = False
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -320,6 +321,7 @@ def generate_mock_reply(user_message: str, persona_name: str):
 
 
 def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"):
+    global HYBRID_OFFLINE
     headers = {"Content-Type": "application/json"}
     cloud_url = os.environ.get("LLM_CLOUD_URL", "https://api.openai.com/v1/chat/completions")
     cloud_model = os.environ.get("LLM_CLOUD_MODEL", "gpt-4o-mini")
@@ -343,6 +345,8 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
             reply = data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
             return reply, None
     except Exception as e:
+        if HYBRID_MODE == "cloud":
+            HYBRID_OFFLINE = True
         mock, emotion = generate_mock_reply(user_message, persona_name)
         return mock, emotion
 
@@ -758,19 +762,30 @@ async def leaderboard():
         conflicts = c.get("conflict_count", 0)
         weaks = USER_WEAK_REPLIES.get(uid, 0)
         golds = USER_GOLD_EXPORTS.get(uid, 0)
-        esc_count = len([e for e in PERSONA_DRIFT_LOG if e["user_id"] == uid])
+        drift_logs = [e for e in PERSONA_DRIFT_LOG if e["user_id"] == uid]
+        esc_count = len(drift_logs)
+        action_counts = Counter(lg["action"] for lg in drift_logs)
         score = syncs * 10 + golds * 25 - weaks * 5 - conflicts * 3 + esc_count * 2
-        badges = []
+        badge_list = []
         if score > 0:
-            badges.append("\U0001F3C6" if score >= 50 else "\U0001F947" if score >= 30 else "\U0001F948" if score >= 15 else "")
+            badge_list.append("\U0001F3C6" if score >= 50 else "\U0001F947" if score >= 30 else "\U0001F948" if score >= 15 else "")
         if golds >= 3:
-            badges.append("\u2B50")
+            badge_list.append("\u2B50")
         if syncs >= 5:
-            badges.append("\U0001F504")
+            badge_list.append("\U0001F504")
         if weaks == 0 and syncs > 0:
-            badges.append("\u2705")
+            badge_list.append("\u2705")
         if esc_count >= 3:
-            badges.append("\u26A1")
+            badge_list.append("\u26A1")
+        if action_counts.get("sync", 0) + action_counts.get("conflict_resolve", 0) + action_counts.get("weak_reply", 0) + action_counts.get("gold_export", 0) >= 5:
+            badge_list.append("\U0001F3A4")
+        if action_counts.get("simulate", 0) + action_counts.get("federated_simulate", 0) > 0 or syncs >= 3:
+            badge_list.append("\U0001F9E9")
+        if action_counts.get("conflict_resolve", 0) >= 2:
+            badge_list.append("\U0001F91D")
+        if golds >= 1:
+            badge_list.append("\U0001F31F")
+        badge_list = [b for b in badge_list if b]
         entries.append({
             "user_id": uid,
             "score": score,
@@ -779,7 +794,8 @@ async def leaderboard():
             "weak_replies": weaks,
             "gold_exports": golds,
             "events": esc_count,
-            "badges": badges,
+            "action_counts": dict(action_counts),
+            "badges": badge_list,
         })
     ranked = sorted(entries, key=lambda e: e["score"], reverse=True)
     for i, r in enumerate(ranked):
@@ -807,7 +823,19 @@ async def set_hybrid_mode(data: dict):
     if mode not in ("local", "cloud"):
         raise HTTPException(400, "Mode must be 'local' or 'cloud'")
     HYBRID_MODE = mode
+    if mode == "local":
+        global HYBRID_OFFLINE
+        HYBRID_OFFLINE = False
     return {"mode": HYBRID_MODE, "status": "ok"}
+
+
+@app.get("/api/hybrid-status")
+async def hybrid_status():
+    return {
+        "mode": HYBRID_MODE,
+        "offline": HYBRID_OFFLINE,
+        "last_success": not HYBRID_OFFLINE if HYBRID_MODE == "cloud" else True,
+    }
 
 
 ESCALATION_REINFORCED: set = set()
