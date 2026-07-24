@@ -67,13 +67,14 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div><canvas id="covCanvas" style="display:none;width:100%;height:80px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Escalation Reinforce</label><div id="escStatus" class="stat">No data</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="escReinfBtn" style="background:var(--red);color:var(--bg);font-size:10px">🔁 Reinforce Patterns</button></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift Overlay <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors <button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Leaderboard</label><div id="leaderboardPanel" class="stat" style="font-size:9px;max-height:80px;overflow-y:auto">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">LLM Setup</label><div class="stat" style="font-size:10px;line-height:1.5">To use a real AI, set env vars on Vercel:<br><code style="display:block;background:var(--surface3);padding:3px 6px;border-radius:4px;margin:2px 0;word-break:break-all;font-size:9px">vercel env add LLM_API_URL<br>vercel env add LLM_MODEL<br>vercel env add LLM_API_KEY</code><span style="color:var(--text3)">Currently offline with mock replies</span></div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Hybrid LLM</label><div style="display:flex;gap:4px;align-items:center;margin:2px 0"><select id="hybridModeSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="local">Local (Ollama)</option><option value="cloud">Cloud (OpenAI)</option></select><span id="hybridStatus" class="stat" style="font-size:9px">⏳</span></div><div id="hybridInfo" class="stat" style="font-size:9px;line-height:1.4">Set LLM_CLOUD_KEY env var for cloud mode</div></div>
   </div>
 </div>
 <div class="main">
@@ -501,6 +502,9 @@ function drawDriftChart(canvas,d){
 }
 
 $('#driftBtn').onclick=loadDrift;
+$('#driftNarrBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/drift-narration');const d=await r.json();addControl('Drift: '+d.narration);speakText(d.narration)}catch(e){}
+};
 
 function parseBlendWeights(val){
   const w={};val.split('+').forEach(p=>{const[m,n]=p.split(':');if(m&&n)w[m]=parseInt(n)});return w
@@ -524,34 +528,58 @@ function drawCovChart(canvas, history){
   canvas.style.width=W+'px';canvas.style.height=H+'px';
   canvas.style.display='block';
   ctx.scale(2,2);
-  const pad={t:10,b:14,l:24,r:8};
+  const pad={t:10,b:16,l:24,r:8};
   const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
   ctx.clearRect(0,0,W,H);
   ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
-  const maxFshot=Math.max(...history.map(h=>h.total_fewshot),5);
+  const maxVal=Math.max(...history.map(h=>Math.max(h.total_fewshot||0,h.escalation_count||0,h.weak_intent_count||0)),5);
   for(let i=0;i<=3;i++){
-    const y=pad.t+ch-(i/3*ch),v=Math.round(i/3*maxFshot);
+    const y=pad.t+ch-(i/3*ch),v=Math.round(i/3*maxVal);
     ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
     ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y+2)
   }
-  ctx.beginPath();ctx.strokeStyle='var(--green)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.strokeStyle='var(--green)';ctx.lineWidth=1.2;
   history.forEach((pt,i)=>{
     const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-(pt.total_fewshot/maxFshot*ch);
+    const y=pad.t+ch-((pt.total_fewshot||0)/maxVal*ch);
     i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
   });ctx.stroke();
   history.forEach((pt,i)=>{
     const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-(pt.total_fewshot/maxFshot*ch);
+    const y=pad.t+ch-((pt.total_fewshot||0)/maxVal*ch);
     ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
     ctx.fillStyle='var(--green)';ctx.fill()
   });
-  const thresholdY=pad.t+ch-(30/maxFshot*ch);
-  ctx.beginPath();ctx.setLineDash([2,2]);ctx.moveTo(pad.l,thresholdY);ctx.lineTo(W-pad.r,thresholdY);
-  ctx.strokeStyle='var(--yellow)';ctx.lineWidth=0.5;ctx.stroke();ctx.setLineDash([]);
-  ctx.fillStyle='var(--yellow)';ctx.textAlign='left';ctx.fillText('threshold',pad.l+2,thresholdY-2);
+  ctx.beginPath();ctx.strokeStyle='var(--red)';ctx.lineWidth=1.2;ctx.setLineDash([3,2]);
+  history.forEach((pt,i)=>{
+    const x=pad.l+(i/(history.length-1))*cw;
+    const y=pad.t+ch-((pt.escalation_count||0)/maxVal*ch);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+  });ctx.stroke();ctx.setLineDash([]);
+  history.forEach((pt,i)=>{
+    const x=pad.l+(i/(history.length-1))*cw;
+    const y=pad.t+ch-((pt.escalation_count||0)/maxVal*ch);
+    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
+    ctx.fillStyle='var(--red)';ctx.fill()
+  });
+  ctx.beginPath();ctx.strokeStyle='var(--yellow)';ctx.lineWidth=1.2;ctx.setLineDash([2,3]);
+  history.forEach((pt,i)=>{
+    const x=pad.l+(i/(history.length-1))*cw;
+    const y=pad.t+ch-((pt.weak_intent_count||0)/maxVal*ch);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+  });ctx.stroke();ctx.setLineDash([]);
+  history.forEach((pt,i)=>{
+    const x=pad.l+(i/(history.length-1))*cw;
+    const y=pad.t+ch-((pt.weak_intent_count||0)/maxVal*ch);
+    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
+    ctx.fillStyle='var(--yellow)';ctx.fill()
+  });
+  ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.font='6px sans-serif';
+  ctx.fillStyle='var(--green)';ctx.fillRect(pad.l,pad.t-6,6,4);ctx.fillStyle='var(--text3)';ctx.fillText('few-shot',pad.l+8,pad.t-2);
+  ctx.fillStyle='var(--red)';ctx.fillRect(pad.l+42,pad.t-6,6,4);ctx.fillStyle='var(--text3)';ctx.fillText('esc',pad.l+50,pad.t-2);
+  ctx.fillStyle='var(--yellow)';ctx.fillRect(pad.l+66,pad.t-6,6,4);ctx.fillStyle='var(--text3)';ctx.fillText('weak',pad.l+74,pad.t-2);
   ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
-  ctx.fillText('# few-shot \u2192',pad.l+cw/2,pad.t+ch+12);
+  ctx.fillText('coverage over time',pad.l+cw/2,pad.t+ch+14);
 }
 
 abtn.onclick=async()=>{
@@ -565,6 +593,49 @@ abtn.onclick=async()=>{
     await refreshAdaptive()
   }catch(e){as_.innerHTML='Error: '+e.message}
   abtn.disabled=0;abtn.textContent='\u26A1 Auto-Reinforce'
+};
+
+async function refreshLeaderboard(){
+  try{
+    const r=await fetch(API+'/leaderboard');const d=await r.json();
+    const lb=$('#leaderboardPanel');
+    if(!d.leaderboard||!d.leaderboard.length){lb.innerHTML='No contributors yet';return}
+    lb.innerHTML='<div style="display:grid;grid-template-columns:18px 1fr 24px 24px;gap:1px 4px;font-size:9px">'+
+      d.leaderboard.slice(0,10).map(e=>{
+        const b=e.badges?e.badges.join(' '):'';
+        const isMe=e.user_id===userId;
+        return '<span style="color:'+(e.rank<=3?'var(--yellow)':'var(--text3)')+'">#'+e.rank+'</span>'+
+          '<span style="color:'+(isMe?'var(--blue)':'var(--text2)')+'">'+(e.user_id.length>8?e.user_id.substr(0,7)+'\u2026':e.user_id)+'</span>'+
+          '<span style="text-align:right;color:var(--green)">'+e.score+'</span>'+
+          '<span style="color:var(--text3)">'+b+'</span>'
+      }).join('')+'</div>'
+  }catch(e){}
+}
+
+async function refreshHybridMode(){
+  try{
+    const r=await fetch(API+'/hybrid-mode');const d=await r.json();
+    const sel=$('#hybridModeSelect');
+    sel.value=d.mode;
+    const info=$('#hybridInfo');
+    if(d.mode==='cloud'&&d.cloud_configured){
+      info.innerHTML='<span style="color:var(--green)">\u25CF</span> Cloud: '+d.cloud_model;
+    }else if(d.mode==='cloud'&&!d.cloud_configured){
+      info.innerHTML='<span style="color:var(--red)">\u25CF</span> Set LLM_CLOUD_KEY env var';
+    }else{
+      info.innerHTML='<span style="color:var(--text2)">\u25CF</span> Local: '+d.local_model+' @ '+d.local_url.split('/').slice(-1);
+    }
+    $('#hybridStatus').textContent=d.mode==='cloud'?'\u2601\uFE0F':'🖥'
+  }catch(e){}
+}
+
+$('#hybridModeSelect').onchange=async()=>{
+  const mode=$('#hybridModeSelect').value;
+  try{
+    await fetch(API+'/hybrid-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+    await refreshHybridMode();
+    addControl('Hybrid mode set to '+mode)
+  }catch(e){}
 };
 
 vb.onclick=()=>{
@@ -584,7 +655,7 @@ vb.onclick=()=>{
   R.start()
 };
 
-refreshStats();updateW();updateHeatmap();refreshAdaptive();refreshEscalationStatus();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);setInterval(refreshAdaptive,20000);setInterval(refreshContributors,25000);setInterval(refreshEscalationStatus,30000);
+refreshStats();updateW();updateHeatmap();refreshAdaptive();refreshEscalationStatus();refreshLeaderboard();refreshHybridMode();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);setInterval(refreshAdaptive,20000);setInterval(refreshContributors,25000);setInterval(refreshEscalationStatus,30000);setInterval(refreshLeaderboard,35000);setInterval(refreshHybridMode,45000);
 add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights, or click <b>Narrate Training</b> for a spoken training summary.</span>')
 </script>
 </body>

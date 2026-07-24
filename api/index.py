@@ -72,6 +72,7 @@ USER_WEAK_REPLIES: dict = defaultdict(int)
 USER_GOLD_EXPORTS: dict = defaultdict(int)
 USER_ANALYTICS_HISTORY: dict = defaultdict(list)
 PERSONA_DRIFT_LOG: list = []
+HYBRID_MODE = "local"
 
 DRIFT_THRESHOLD = 15
 SCORE_THRESHOLD = 70
@@ -320,17 +321,22 @@ def generate_mock_reply(user_message: str, persona_name: str):
 
 def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"):
     headers = {"Content-Type": "application/json"}
-    if LLM_API_KEY:
-        headers["Authorization"] = f"Bearer {LLM_API_KEY}"
+    cloud_url = os.environ.get("LLM_CLOUD_URL", "https://api.openai.com/v1/chat/completions")
+    cloud_model = os.environ.get("LLM_CLOUD_MODEL", "gpt-4o-mini")
+    target_url = cloud_url if HYBRID_MODE == "cloud" else LLM_API_URL
+    target_model = cloud_model if HYBRID_MODE == "cloud" else LLM_MODEL
+    api_key = os.environ.get("LLM_CLOUD_KEY") if HYBRID_MODE == "cloud" else LLM_API_KEY
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     body = json.dumps({
-        "model": LLM_MODEL,
+        "model": target_model,
         "stream": False,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
     }).encode()
-    req = urllib.request.Request(LLM_API_URL, data=body, headers=headers, method="POST")
+    req = urllib.request.Request(target_url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
@@ -649,6 +655,8 @@ async def adaptive_reinforce(data: dict = {}):
     COVERAGE_HISTORY.append({
         "timestamp": datetime.now().isoformat(),
         "total_fewshot": len(FEWSHOT_DATASET),
+        "escalation_count": sum(INTENT_ESCALATION_COUNTER.values()),
+        "weak_intent_count": len([e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]),
         "auto_reinforced": sorted(AUTO_REINFORCED_INTENTS),
         "escalation_reinforced": sorted(ESCALATION_REINFORCED),
         "intents_covered": sorted(set(e["intent"] for e in FEWSHOT_DATASET)),
@@ -683,6 +691,124 @@ async def adaptive_status():
 
 
 load_fewshot()
+
+@app.get("/api/coverage-history")
+async def coverage_history():
+    return {
+        "coverage_history": COVERAGE_HISTORY[-50:],
+        "total_fewshot": len(FEWSHOT_DATASET),
+        "total_escalations": sum(INTENT_ESCALATION_COUNTER.values()),
+        "total_weak": len([e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]),
+    }
+
+
+@app.get("/api/drift-narration")
+async def drift_narration():
+    if not PERSONA_DRIFT_LOG:
+        return {"narration": "No persona drift data recorded yet."}
+    by_user = defaultdict(list)
+    for entry in PERSONA_DRIFT_LOG:
+        by_user[entry["user_id"]].append(entry)
+    parts = []
+    for uid, logs in sorted(by_user.items()):
+        if len(logs) < 2 and not any(l["weights"] for l in logs):
+            continue
+        weights_before = {}
+        weights_after = {}
+        for lg in logs:
+            if lg["weights"]:
+                weights_after = dict(lg["weights"])
+                if not weights_before:
+                    weights_before = dict(lg["weights"])
+        deltas = {}
+        all_keys = set(weights_before.keys()) | set(weights_after.keys())
+        for k in sorted(all_keys):
+            before = weights_before.get(k, 50)
+            after = weights_after.get(k, 50)
+            diff = round(after - before, 1)
+            if diff != 0:
+                deltas[k] = diff
+        actions = Counter(lg["action"] for lg in logs)
+        reasons = []
+        for act, cnt in actions.most_common(3):
+            reasons.append(f"{cnt} {act}")
+        if deltas:
+            delta_str = ", ".join(f"{k} {'drifted' if abs(v) > 0 else 'changed'} {v:+}" for k, v in deltas.items())
+            parts.append(f"{uid}'s contributions caused {delta_str}, from {len(logs)} events including " + ", ".join(reasons) + ".")
+        elif len(logs) > 0:
+            parts.append(f"{uid} had {len(logs)} events without weight changes.")
+    if not parts:
+        return {"narration": "No significant persona drift detected yet."}
+    return {"narration": "Persona drift analysis. " + " ".join(parts), "events": len(PERSONA_DRIFT_LOG)}
+
+
+@app.get("/api/leaderboard")
+async def leaderboard():
+    users = sorted(set(
+        list(CONTRIBUTORS.keys()) +
+        list(USER_WEAK_REPLIES.keys()) +
+        list(USER_GOLD_EXPORTS.keys())
+    ))
+    if not users:
+        return {"leaderboard": [], "message": "No contributors yet."}
+    entries = []
+    for uid in users:
+        c = CONTRIBUTORS.get(uid, {})
+        syncs = c.get("sync_count", 0)
+        conflicts = c.get("conflict_count", 0)
+        weaks = USER_WEAK_REPLIES.get(uid, 0)
+        golds = USER_GOLD_EXPORTS.get(uid, 0)
+        esc_count = len([e for e in PERSONA_DRIFT_LOG if e["user_id"] == uid])
+        score = syncs * 10 + golds * 25 - weaks * 5 - conflicts * 3 + esc_count * 2
+        badges = []
+        if score > 0:
+            badges.append("\U0001F3C6" if score >= 50 else "\U0001F947" if score >= 30 else "\U0001F948" if score >= 15 else "")
+        if golds >= 3:
+            badges.append("\u2B50")
+        if syncs >= 5:
+            badges.append("\U0001F504")
+        if weaks == 0 and syncs > 0:
+            badges.append("\u2705")
+        if esc_count >= 3:
+            badges.append("\u26A1")
+        entries.append({
+            "user_id": uid,
+            "score": score,
+            "syncs": syncs,
+            "conflicts": conflicts,
+            "weak_replies": weaks,
+            "gold_exports": golds,
+            "events": esc_count,
+            "badges": badges,
+        })
+    ranked = sorted(entries, key=lambda e: e["score"], reverse=True)
+    for i, r in enumerate(ranked):
+        r["rank"] = i + 1
+    return {"leaderboard": ranked, "total": len(ranked)}
+
+
+@app.get("/api/hybrid-mode")
+async def get_hybrid_mode():
+    cloud_key = bool(os.environ.get("LLM_CLOUD_KEY"))
+    return {
+        "mode": HYBRID_MODE,
+        "cloud_configured": cloud_key,
+        "local_url": LLM_API_URL,
+        "local_model": LLM_MODEL,
+        "cloud_url": os.environ.get("LLM_CLOUD_URL", "https://api.openai.com/v1/chat/completions"),
+        "cloud_model": os.environ.get("LLM_CLOUD_MODEL", "gpt-4o-mini"),
+    }
+
+
+@app.post("/api/hybrid-mode")
+async def set_hybrid_mode(data: dict):
+    global HYBRID_MODE
+    mode = data.get("mode", "local")
+    if mode not in ("local", "cloud"):
+        raise HTTPException(400, "Mode must be 'local' or 'cloud'")
+    HYBRID_MODE = mode
+    return {"mode": HYBRID_MODE, "status": "ok"}
+
 
 ESCALATION_REINFORCED: set = set()
 ESCALATION_TEMPLATES = {
@@ -746,6 +872,8 @@ async def escalation_reinforce(data: dict = {}):
         "auto_reinforced": sorted(AUTO_REINFORCED_INTENTS),
         "escalation_reinforced": sorted(ESCALATION_REINFORCED),
         "intents_covered": sorted(set(e["intent"] for e in FEWSHOT_DATASET)),
+        "escalation_count": sum(INTENT_ESCALATION_COUNTER.values()),
+        "weak_intent_count": len([e for e in TRAINING_EVENTS if e["type"] == "weak_reply"]),
     })
     save_fewshot()
     if added:
