@@ -67,12 +67,12 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div><canvas id="covCanvas" style="display:none;width:100%;height:80px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Tuning <button class="btn" id="tuneBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Analyze</button></label><div id="tunePanel" class="stat" style="font-size:9px;max-height:40px;overflow-y:auto">Run analysis to see suggested persona weight changes</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button><button class="btn" id="fedSimNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Escalation Reinforce</label><div id="escStatus" class="stat">No data</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="escReinfBtn" style="background:var(--red);color:var(--bg);font-size:10px">🔁 Reinforce Patterns</button></div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors <button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Leaderboard <button class="btn" id="impactNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Impact</button></label><div id="leaderboardPanel" class="stat" style="font-size:9px;max-height:80px;overflow-y:auto">Loading...</div></div>
+    <div><label style="display:block;margin-bottom:4px;font-size:11px">Leaderboard <button class="btn" id="impactNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Impact</button><button class="btn" id="storyBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">📖 Story</button></label><div id="leaderboardPanel" class="stat" style="font-size:9px;max-height:80px;overflow-y:auto">Loading...</div></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
     <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
     <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
@@ -288,7 +288,9 @@ nb.onclick=async()=>{
     ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
     const dc=d.dataset_changes||{};
     const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'. '+(dc.fewshot_entries_added?' '+dc.fewshot_entries_added+' new few-shot entries.':'')+(dc.conflicts_resolved?' '+dc.conflicts_resolved+' conflicts resolved.':'')+(dc.gold_exports?' '+dc.gold_exports+' gold exports.':'');
-    speakText(nar,'encouragement');addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' resp, '+d.weak_count+' weak, avg '+d.avg_confidence+(dc.fewshot_entries_added?' \u2022 +'+dc.fewshot_entries_added+' fewshot':'')+(dc.conflicts_resolved?' \u2022 \u2694\uFE0Fx'+dc.conflicts_resolved:'')+(dc.gold_exports?' \u2022 \u2B50x'+dc.gold_exports:''));
+    speakText(nar,'encouragement');
+    const balMsg=(d.balance_applied?' \u2699 balance adjusted':'')+(d.rollback_applied?' \u21BA rollback: '+d.rollback_reason:'');
+    addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' resp, '+d.weak_count+' weak, avg '+d.avg_confidence+(dc.fewshot_entries_added?' \u2022 +'+dc.fewshot_entries_added+' fewshot':'')+(dc.conflicts_resolved?' \u2022 \u2694\uFE0Fx'+dc.conflicts_resolved:'')+(dc.gold_exports?' \u2022 \u2B50x'+dc.gold_exports:'')+balMsg);
     await narrateTraining();await narrateContributors();await refreshContributors()
   }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
 };
@@ -298,7 +300,7 @@ nh.onclick=async()=>{
 };
 
 rb.onclick=async()=>{
-  try{const r2=await fetch(API+'/reinforce');const d=await r2.json();addControl(d.message);speakText(d.message,'challenge')}catch(e){}
+  try{const r2=await fetch(API+'/reinforce');const d=await r2.json();const balMsg=(d.balance_applied?' \u2699 balance adjusted':'')+(d.rollback_applied?' \u21BA '+d.rollback_reason:'');addControl(d.message+balMsg);speakText(d.message,'challenge')}catch(e){}
 };
 
 const SIM_COLORS=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7'];
@@ -411,6 +413,11 @@ fsb.onclick=async()=>{
   }catch(e){sr.innerHTML='Error: '+e.message}
 };
 
+$('#fedSimNarrBtn').onclick=async()=>{
+  const rounds=parseInt(sri.value)||8;
+  try{const r=await fetch(API+'/federated-sim-narration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds})});const d=await r.json();addControl('Fed sim narration: '+d.narration);speakText(d.narration,d.emotion||'reflection')}catch(e){}
+};
+
 async function refreshEscalationStatus(){
   try{
     const r=await fetch(API+'/escalation-status');const d=await r.json();
@@ -423,7 +430,8 @@ esb.onclick=async()=>{
   try{
     const r=await fetch(API+'/escalation-reinforce',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     const d=await r.json();
-    addControl(d.messages.join(' '));
+    const balMsg=(d.balance_applied?' \u2699 balance adjusted':'')+(d.rollback_applied?' \u21BA '+d.rollback_reason:'');
+    addControl(d.messages.join(' ')+balMsg);
     await refreshEscalationStatus()
   }catch(e){es.innerHTML='Error: '+e.message}
   esb.disabled=0;esb.textContent='\uD83D\uDD01 Reinforce Patterns'
@@ -535,8 +543,10 @@ async function refreshDashboard(){
     const topScore=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].score:'—';
     const online=dh.has_api_key||mode==='local';
     if(dashNarrate&&avg!=='N/A'){
+      const escRising=esc>=5,lowMany=low>=3,confHigh=avg>=75;
+      const dashEmotion=escRising?'empathy':confHigh?'joy':lowMany?'challenge':fshot>=10?'encouragement':'reflection';
       const nar='Dashboard: average confidence '+avg+' percent, '+low+' consecutive low scores, '+fshot+' few-shot examples, '+esc+' escalations, leader is '+top+' with '+topScore+' points. '+(online?'System is online.':'Using mock replies.');
-      speakText(nar,'reflection',true)
+      speakText(nar,dashEmotion,true)
     }
     panel.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 6px;font-size:9px">'+
       '<span>Avg conf</span><span style="text-align:right;color:'+(avg>=70?'var(--green)':avg>=50?'var(--yellow)':'var(--red)')+'"><b>'+avg+'%</b></span>'+
@@ -683,7 +693,11 @@ async function refreshLeaderboard(){
 }
 
 $('#impactNarrBtn').onclick=async()=>{
-  try{const r=await fetch(API+'/contributor-impact');const d=await r.json();addControl('Impact: '+d.narration);speakText(d.narration,'encouragement')}catch(e){}
+  try{const r=await fetch(API+'/contributor-impact');const d=await r.json();addControl('Impact: '+d.narration);const hasChanges=d.changes&&(d.changes.new_leader||d.changes.new_badges);speakText(d.narration,hasChanges?'joy':'encouragement')}catch(e){}
+};
+
+$('#storyBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/unified-story');const d=await r.json();addControl('Story: '+d.narration);speakText(d.narration,d.emotion||'reflection')}catch(e){}
 };
 
 $('#tuneBtn').onclick=async()=>{
@@ -692,11 +706,24 @@ $('#tuneBtn').onclick=async()=>{
     const r=await fetch(API+'/adaptive-tuning');const d=await r.json();
     const adj=d.suggested_adjustments||{};
     const drift=d.current_drift||{};
+    const hasAdj=Object.keys(adj).length>0;
     tp.innerHTML=(d.messages.length?d.messages.join('<br>'):'No adjustments')+'<br><span style="font-size:8px;color:var(--text3)">Drift: '+
       Object.entries(drift).map(([k,v])=>k+':'+(v>0?'+':'')+v).join(', ')+
-      (Object.keys(adj).length?' | Suggested: '+Object.entries(adj).map(([k,v])=>k+'+'+v).join(', '):'')+'</span>'
+      (hasAdj?' | Suggested: '+Object.entries(adj).map(([k,v])=>k+'+'+v).join(', '):'')+'</span>'+
+      (hasAdj?'<br><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="applyBalanceBtn" style="background:var(--green);color:var(--bg);font-size:9px;padding:2px 6px">✓ Apply</button><button class="btn" id="rollbackBalanceBtn" style="background:var(--red);color:var(--bg);font-size:9px;padding:2px 6px">↺ Rollback</button></div>':'')
   }catch(e){tp.innerHTML='Error: '+e.message}
 };
+
+document.addEventListener('click',function(e){
+  if(e.target&&e.target.id==='applyBalanceBtn'){
+    e.target.disabled=1;e.target.textContent='Applying...';
+    fetch(API+'/auto-balance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{addControl('Auto-balance: '+d.message);if(d.balance)weights=d.balance;updateW();e.target.textContent='✓ Applied';e.target.style.background='var(--surface3)'}).catch(()=>{e.target.textContent='Error'})
+  }
+  if(e.target&&e.target.id==='rollbackBalanceBtn'){
+    e.target.disabled=1;e.target.textContent='Rolling back...';
+    fetch(API+'/rollback-balance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{addControl('Rollback: '+d.message);if(d.balance)weights=d.balance;updateW();e.target.textContent='↺ Rolled Back';if(d.degraded)speakText('Confidence dropped. Balance rolled back.','empathy')}).catch(()=>{e.target.textContent='Error'})
+  }
+});
 
 async function refreshHybridMode(){
   try{

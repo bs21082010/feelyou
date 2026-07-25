@@ -67,6 +67,11 @@ INTENT_ESCALATION_COUNTER: dict = defaultdict(int)
 PREV_FEWSHOT_COUNT = 0
 PREV_CONFLICT_COUNT = 0
 PREV_GOLD_COUNT = 0
+PREV_LEADERBOARD = None
+LATEST_FED_SIM_RESULTS = None
+PERSONA_BALANCE = {"mentor": 50, "coach": 25, "teacher": 25}
+AUTO_BALANCE_ENABLED = True
+PRE_BALANCE_CONFIDENCE = None
 FEWSHOT_PATH = os.path.join(HERE, "fewshot_dataset.jsonl")
 USER_WEAK_REPLIES: dict = defaultdict(int)
 USER_GOLD_EXPORTS: dict = defaultdict(int)
@@ -149,6 +154,46 @@ def record_persona_drift(user_id: str, action_type: str, weights: dict = None, s
         "weights": snap,
         "sim_avg": sim_avg,
     })
+
+
+def compute_narration_emotion(avg_conf=None, escalations=None, consecutive_low=None, coverage_trend=None):
+    if escalations and escalations >= 5: return "empathy"
+    if consecutive_low and consecutive_low >= 3: return "challenge"
+    if avg_conf and avg_conf >= 75: return "joy"
+    if coverage_trend and coverage_trend > 0: return "encouragement"
+    return "reflection"
+
+
+async def auto_apply_balance():
+    global PERSONA_BALANCE, PRE_BALANCE_CONFIDENCE, AUTO_BALANCE_ENABLED
+    if not AUTO_BALANCE_ENABLED:
+        return {"applied": False, "reason": "auto-balance disabled"}
+    tune_resp = await adaptive_tuning()
+    suggested = tune_resp.get("suggested_adjustments", {})
+    if not suggested:
+        return {"applied": False, "reason": "no adjustments needed"}
+    PRE_BALANCE_CONFIDENCE = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+    for persona, adj in suggested.items():
+        PERSONA_BALANCE[persona] = min(100, max(0, PERSONA_BALANCE.get(persona, 50) + adj))
+    normalize_weights(PERSONA_BALANCE)
+    return {
+        "applied": True,
+        "adjustments": suggested,
+        "balance": dict(PERSONA_BALANCE),
+        "pre_balance_confidence": PRE_BALANCE_CONFIDENCE,
+    }
+
+
+async def check_rollback():
+    global PERSONA_BALANCE, PRE_BALANCE_CONFIDENCE
+    if PRE_BALANCE_CONFIDENCE is None:
+        return {"rolled_back": False}
+    current_avg = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+    if current_avg is not None and current_avg < PRE_BALANCE_CONFIDENCE - 5:
+        PERSONA_BALANCE = {"mentor": 50, "coach": 25, "teacher": 25}
+        PRE_BALANCE_CONFIDENCE = None
+        return {"rolled_back": True, "reason": f"Confidence dropped from {PRE_BALANCE_CONFIDENCE} to {current_avg}"}
+    return {"rolled_back": False}
 
 
 def apply_template(user_input: str, dynamic_weights: dict = None) -> str:
@@ -356,7 +401,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     global RECENT_SCORES, CONSECUTIVE_LOW, LAST_REPLY, LAST_PROMPT, LAST_SCORE, WEAK_REPLY_COUNT, ESCALATION_EVENTS
     user_id = request.headers.get("X-User-Id") or "anonymous"
 
-    weights = req.weights or {}
+    weights = req.weights or dict(PERSONA_BALANCE)
     prompt = apply_template(req.message, weights)
     persona = build_persona(req.persona, weights)
 
@@ -483,6 +528,8 @@ async def trigger_sync(req: Request):
     PREV_FEWSHOT_COUNT = len(FEWSHOT_DATASET)
     PREV_CONFLICT_COUNT = len(CONFLICT_RESOLUTIONS)
     PREV_GOLD_COUNT = sum(USER_GOLD_EXPORTS.values())
+    bal = await auto_apply_balance()
+    roll = await check_rollback()
     return {
         "status": "ok",
         "synced_at": LAST_SYNC_TIME,
@@ -497,6 +544,10 @@ async def trigger_sync(req: Request):
             "conflicts_resolved": max(0, new_conflicts),
             "gold_exports": max(0, new_gold),
         },
+        "balance_applied": bal.get("applied", False),
+        "balance_adjustments": bal.get("adjustments"),
+        "rollback_applied": roll.get("rolled_back", False),
+        "rollback_reason": roll.get("reason"),
     }
 
 
@@ -672,11 +723,17 @@ async def adaptive_reinforce(data: dict = {}):
             messages.append(f"Auto-reinforced '{a['intent']}' (weak rate {a['weak_rate']}%).")
     else:
         messages.append("All intents already reinforced.")
+    bal = await auto_apply_balance()
+    roll = await check_rollback()
     return {
         "reinforced": len(added),
         "total_fewshot": len(FEWSHOT_DATASET),
         "messages": messages,
         "added": [{"intent": a["intent"], "weak_rate": a["weak_rate"]} for a in added],
+        "balance_applied": bal.get("applied", False),
+        "balance_adjustments": bal.get("adjustments"),
+        "rollback_applied": roll.get("rolled_back", False),
+        "rollback_reason": roll.get("reason"),
     }
 
 
@@ -805,6 +862,7 @@ async def leaderboard():
 
 @app.get("/api/contributor-impact")
 async def contributor_impact():
+    global PREV_LEADERBOARD
     lb_resp = await leaderboard()
     entries = lb_resp.get("leaderboard", [])
     if not entries:
@@ -814,6 +872,26 @@ async def contributor_impact():
     badge_names = {"\U0001F3C6": "Trophy", "\U0001F947": "Gold", "\U0001F948": "Silver", "\u2B50": "Star", "\U0001F504": "Syncer", "\u2705": "Clean", "\u26A1": "Energizer", "\U0001F3A4": "Narrator", "\U0001F9E9": "Strategist", "\U0001F91D": "Diplomat", "\U0001F31F": "Pioneer"}
     top_badges = [badge_names.get(b, b) for b in top["badges"] if b]
     parts.append(f"{top['user_id']} is leading with {top['score']} points" + (f", earning {', '.join(top_badges)} badges" if top_badges else "") + ".")
+    changes = {}
+    if PREV_LEADERBOARD:
+        prev_top = PREV_LEADERBOARD[0] if PREV_LEADERBOARD else None
+        if prev_top and prev_top["user_id"] != top["user_id"]:
+            changes["new_leader"] = f"{top['user_id']} took the lead from {prev_top['user_id']}."
+            parts.append(changes["new_leader"])
+        if prev_top and top["score"] > prev_top["score"]:
+            diff = top["score"] - prev_top["score"]
+            changes["score_gain"] = diff
+            parts.append(f"That is {diff} points higher than last check.")
+        prev_badges = set(prev_top.get("badges", [])) if prev_top else set()
+        curr_badges = set(top.get("badges", []))
+        new_badges = curr_badges - prev_badges
+        if new_badges:
+            new_names = [badge_names.get(b, b) for b in new_badges]
+            changes["new_badges"] = list(new_badges)
+            parts.append(f"They just earned {', '.join(new_names)}.")
+    else:
+        parts.append("This is their first appearance on the leaderboard.")
+    PREV_LEADERBOARD = entries
     if len(entries) > 1:
         second = entries[1]
         parts.append(f"{second['user_id']} is second with {second['score']} points.")
@@ -824,7 +902,7 @@ async def contributor_impact():
     total_syncs = sum(e["syncs"] for e in entries)
     if total_events:
         parts.append(f"Across {len(entries)} contributors: {total_syncs} total syncs, {total_events} drift events logged.")
-    return {"narration": "Contributor impact. " + " ".join(parts), "leaderboard": entries[:5]}
+    return {"narration": "Contributor impact. " + " ".join(parts), "leaderboard": entries[:5], "changes": changes}
 
 
 @app.get("/api/adaptive-tuning")
@@ -885,6 +963,136 @@ async def adaptive_tuning():
         },
         "messages": messages or ["No adjustments needed."],
     }
+
+
+@app.post("/api/auto-balance")
+async def auto_balance(data: dict = {}):
+    global PERSONA_BALANCE, PRE_BALANCE_CONFIDENCE
+    tune_resp = await adaptive_tuning()
+    suggested = tune_resp.get("suggested_adjustments", {})
+    if not suggested:
+        return {"applied": False, "message": "No adjustments needed.", "balance": PERSONA_BALANCE}
+    PRE_BALANCE_CONFIDENCE = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+    for persona, adj in suggested.items():
+        PERSONA_BALANCE[persona] = min(100, max(0, PERSONA_BALANCE.get(persona, 50) + adj))
+    normalize_weights(PERSONA_BALANCE)
+    return {
+        "applied": True,
+        "message": f"Applied adjustments: {', '.join(f'{p} +{suggested[p]}' for p in suggested)}.",
+        "balance": PERSONA_BALANCE,
+        "pre_balance_confidence": PRE_BALANCE_CONFIDENCE,
+        "adjustments": suggested,
+    }
+
+
+@app.post("/api/rollback-balance")
+async def rollback_balance():
+    global PERSONA_BALANCE, PRE_BALANCE_CONFIDENCE
+    PERSONA_BALANCE = {"mentor": 50, "coach": 25, "teacher": 25}
+    current_avg = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+    degraded = PRE_BALANCE_CONFIDENCE is not None and current_avg is not None and current_avg < PRE_BALANCE_CONFIDENCE - 5
+    PRE_BALANCE_CONFIDENCE = None
+    return {
+        "rolled_back": True,
+        "balance": PERSONA_BALANCE,
+        "degraded": degraded,
+        "message": "Balance rolled back to defaults." + (" Confidence dropped since balance was applied." if degraded else ""),
+    }
+
+
+@app.post("/api/federated-sim-narration")
+async def federated_sim_narration(data: dict = {}):
+    rounds = data.get("rounds", 8)
+    fs_resp = await federated_simulate({"rounds": rounds})
+    results = fs_resp.get("results", [])
+    ranked = fs_resp.get("ranked", [])
+    if not results:
+        return {"narration": "No contributors to simulate."}
+    parts = []
+    if ranked:
+        top_r = ranked[0]
+        parts.append(f"{top_r['user_id']} leads with {top_r['avg_confidence']} percent average confidence and {top_r['escalations']} escalations.")
+        if len(ranked) > 1:
+            second_r = ranked[1]
+            diff = round(top_r["avg_confidence"] - second_r["avg_confidence"], 1)
+            esc_diff = top_r["escalations"] - second_r["escalations"]
+            parts.append(f"That is {diff} points higher than {second_r['user_id']}")
+            if esc_diff < 0:
+                parts.append(f"who had {abs(esc_diff)} fewer escalations.")
+            else:
+                parts.append(".")
+    for r in results[:3]:
+        if r.get("blend_scores"):
+            best_blend = max(r["blend_scores"], key=lambda b: b["avg"])
+            balanced_score = next((b["avg"] for b in r["blend_scores"] if "balanced" in b["blend"].lower()), None)
+            parts.append(f"{r['user_id']}'s best blend was {best_blend['blend']} at {best_blend['avg']} percent confidence.")
+            if balanced_score is not None and best_blend["avg"] > balanced_score:
+                boost = round(best_blend["avg"] - balanced_score, 1)
+                parts.append(f"Outperforming balanced blend by {boost} points.")
+    avg_conf = fs_resp.get("fed_avg")
+    if avg_conf:
+        parts.append(f"Federated average confidence is {avg_conf} percent across {len(results)} users.")
+    emotion = compute_narration_emotion(avg_conf=avg_conf, escalations=sum(r["escalations"] for r in ranked) if ranked else 0)
+    return {"narration": "Federated simulation results. " + " ".join(parts), "ranked": ranked[:5], "fed_avg": avg_conf, "emotion": emotion}
+
+
+@app.get("/api/unified-story")
+async def unified_story():
+    chapters = []
+
+    # Chapter 1: Drift overview
+    drift_users = set(e["user_id"] for e in PERSONA_DRIFT_LOG if e["user_id"] not in ("simulation", "federated"))
+    drift_count = len([e for e in PERSONA_DRIFT_LOG if e["user_id"] not in ("simulation", "federated")])
+    if drift_users:
+        chapters.append(f"The journey spans {len(drift_users)} contributors with {drift_count} drift events.")
+        if len(PERSONA_DRIFT_LOG) >= 2 and any(e["weights"] for e in PERSONA_DRIFT_LOG[-2:]):
+            recent = [e for e in PERSONA_DRIFT_LOG[-3:] if e["weights"]]
+            if recent:
+                last_w = recent[-1]["weights"]
+                w_str = ", ".join(f"{k}: {v}" for k, v in sorted(last_w.items()))
+                chapters.append(f"Latest persona weights are {w_str}.")
+    else:
+        chapters.append("No drift events recorded yet.")
+
+    # Chapter 2: Leaderboard snapshot
+    lb_resp = await leaderboard()
+    entries = lb_resp.get("leaderboard", [])
+    if entries:
+        top3 = entries[:3]
+        chapters.append(f"On the leaderboard, {top3[0]['user_id']} leads with {top3[0]['score']} points.")
+        if len(top3) > 1:
+            chapters.append(f"Followed by {top3[1]['user_id']} with {top3[1]['score']} points")
+            if len(top3) > 2:
+                chapters.append(f"and {top3[2]['user_id']} with {top3[2]['score']} points.")
+            else:
+                chapters[-1] += "."
+        total_syncs = sum(e["syncs"] for e in entries)
+        total_events = sum(e["events"] for e in entries)
+        chapters.append(f"Collectively, they have {total_syncs} syncs and {total_events} drift events.")
+    else:
+        chapters.append("The leaderboard is empty.")
+
+    # Chapter 3: Simulation resilience
+    sim_data = LATEST_FED_SIM_RESULTS
+    if sim_data and sim_data.get("ranked"):
+        ranked = sim_data["ranked"]
+        fed_avg = sim_data.get("fed_avg", 0)
+        chapters.append(f"In simulation, average resilience across {len(ranked)} users is {fed_avg} percent confidence.")
+        top_sim = ranked[0]
+        chapters.append(f"{top_sim['user_id']} shows the highest resilience at {top_sim['avg_confidence']} percent with {top_sim['escalations']} escalations.")
+    else:
+        chapters.append("No simulation data available yet. Run a federated simulation to see resilience comparisons.")
+
+    # Chapter 4: System health
+    avg_conf = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None
+    if avg_conf is not None:
+        chapters.append(f"System-wide average confidence is {avg_conf} percent across {len(RECENT_SCORES)} recent interactions.")
+    mode = HYBRID_MODE
+    chapters.append(f"System is in {mode} mode.")
+
+    narration = " ".join(chapters)
+    emotion = compute_narration_emotion(avg_conf=avg_conf, escalations=len(ESCALATION_EVENTS), consecutive_low=CONSECUTIVE_LOW)
+    return {"narration": narration, "chapters": chapters, "emotion": emotion}
 
 
 @app.get("/api/hybrid-mode")
@@ -992,7 +1200,9 @@ async def escalation_reinforce(data: dict = {}):
         messages = [f"Escalation-reinforced '{a['intent']}' (pattern {a['pattern']}, {a['escalation_count']} events)." for a in added]
     else:
         messages = ["No escalation patterns to reinforce — all covered or below threshold."]
-    return {"reinforced": len(added), "total_fewshot": len(FEWSHOT_DATASET), "messages": messages, "added": [{"intent": a["intent"], "tier": a.get("tier", "any"), "count": a["escalation_count"]} for a in added]}
+    bal = await auto_apply_balance()
+    roll = await check_rollback()
+    return {"reinforced": len(added), "total_fewshot": len(FEWSHOT_DATASET), "messages": messages, "added": [{"intent": a["intent"], "tier": a.get("tier", "any"), "count": a["escalation_count"]} for a in added], "balance_applied": bal.get("applied", False), "balance_adjustments": bal.get("adjustments"), "rollback_applied": roll.get("rolled_back", False), "rollback_reason": roll.get("reason")}
 
 
 @app.get("/api/escalation-status")
@@ -1171,7 +1381,7 @@ async def federated_simulate(data: dict):
     ranked = sorted(user_results, key=lambda u: u["sim_avg_confidence"], reverse=True)
     fed_avg = round(sum(u["sim_avg_confidence"] for u in user_results) / len(user_results), 1) if user_results else None
     record_persona_drift("federated", "federated_simulate", sim_avg=fed_avg)
-    return {
+    result = {
         "results": user_results,
         "ranked": [
             {"rank": i + 1, "user_id": u["user_id"], "avg_confidence": u["sim_avg_confidence"],
@@ -1182,6 +1392,9 @@ async def federated_simulate(data: dict):
         "total_users": len(users),
         "fed_avg": fed_avg,
     }
+    global LATEST_FED_SIM_RESULTS
+    LATEST_FED_SIM_RESULTS = result
+    return result
 
 
 @app.post("/api/gold-export")
