@@ -88,6 +88,9 @@ WEIGHT_DECAY_PER_TURN = 3
 PREDICTIVE_BOOST = 8
 CONFLICT_AUTO_POLICY = "low"
 DYNAMIC_BOOST = {"persona": "mentor", "reason": "default"}
+BADGE_HISTORY: list = []
+PREV_BOOST = None
+WEIGHT_HISTORY: list = []
 
 ESCAPED_MODEL = re.sub(r'[^a-zA-Z0-9_-]', '_', LLM_MODEL)
 
@@ -474,6 +477,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
 
     if weights:
         normalize_weights(weights)
+    WEIGHT_HISTORY.append({"timestamp": datetime.now().isoformat(), "weights": dict(weights) if weights else {}, "boost": dict(DYNAMIC_BOOST)})
 
     return ChatResponse(
         reply=reply,
@@ -1179,6 +1183,43 @@ async def badge_alerts():
 @app.get("/api/badge-history")
 async def badge_history():
     return {"history": BADGE_HISTORY[-50:]}
+
+
+@app.get("/api/weight-history")
+async def weight_history():
+    return {"history": WEIGHT_HISTORY[-50:]}
+
+
+@app.get("/api/orchestration-story")
+async def orchestration_story():
+    chapters = []
+    recent_boosts = [w for w in WEIGHT_HISTORY[-10:] if w.get("boost", {}).get("changed")]
+    if recent_boosts:
+        last = recent_boosts[-1]["boost"]
+        chapters.append(f"Orchestration boosted {last['persona']} by {last['boost']} points due to {last['reason']} via {last['source']} mode.")
+        if len(recent_boosts) > 1:
+            prev = recent_boosts[-2]["boost"]
+            chapters.append(f"Earlier, {prev['persona']} was boosted for {prev['reason']}.")
+    else:
+        recent = [w for w in WEIGHT_HISTORY[-5:] if w.get("boost", {}).get("boost", 0) > 0]
+        if recent:
+            last = recent[-1]["boost"]
+            chapters.append(f"Active persona boost is on {last['persona']} due to {last['reason']}.")
+        else:
+            chapters.append("No persona boosts active this session.")
+    recent_badges = BADGE_HISTORY[-5:]
+    if recent_badges:
+        badge_parts = [f"{b['user_id']} earned {b['name']}" for b in recent_badges]
+        chapters.append("Badges: " + ". ".join(badge_parts) + ".")
+    recent_drift = [e for e in PERSONA_DRIFT_LOG[-5:] if e["user_id"] not in ("simulation", "federated")]
+    if recent_drift:
+        drift_parts = [f"{e['user_id']} triggered {e['action']}" for e in recent_drift]
+        chapters.append("Drift events: " + ". ".join(drift_parts) + ".")
+    mode = HYBRID_MODE
+    chapters.append(f"Running in {mode} mode.")
+    narration = "Session overview. " + " ".join(chapters)
+    emotion = compute_narration_emotion(avg_conf=round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None, escalations=len(ESCALATION_EVENTS))
+    return {"narration": narration, "chapters": chapters, "emotion": emotion}
 
 
 @app.get("/api/hybrid-mode")

@@ -95,7 +95,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-story">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
       <div id="badgeTimelinePanel" style="display:none;font-size:9px;color:var(--text2);max-height:120px;overflow-y:auto;margin:4px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
       <hr style="border-color:var(--surface3);margin:8px 0">
@@ -108,6 +108,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
       <canvas id="driftCanvas" style="display:none;width:100%;height:140px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
       <div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:4px 0"></div>
       <div id="driftInfluence" class="stat" style="font-size:9px;max-height:100px;overflow-y:auto">Load drift data</div>
+      <hr style="border-color:var(--surface3);margin:8px 0">
+      <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Weight Delta Over Time</div>
+      <canvas id="weightDeltaCanvas" style="width:100%;height:80px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
     </div>
   </div>
   <div class="tab-content" id="tab-leaderboard">
@@ -189,7 +192,9 @@ async function chat(msg){
     weights=d.weights||weights;updateW();
     if(d.dynamic_boost&&d.dynamic_boost.changed){
       const b=d.dynamic_boost;
-      const msg2=b.persona+' boosted +'+b.boost+' due to '+b.reason+'. Source: '+b.source;
+      const reasonMap={'consecutive low scores':'after '+d.dynamic_boost.reason.match(/\d+/)?.[0]||'several'+' consecutive low confidence replies','escalation detected':'an escalation was detected','high confidence + explanation intent':'confidence is high with an explanation request','high confidence baseline':'consistently high confidence','default':'normal conditions'};
+      const naturalReason=reasonMap[b.reason]||b.reason;
+      const msg2=b.persona+' boosted +'+b.boost+' '+naturalReason+'. Source: '+b.source;
       addControl('Boost: '+msg2);speakText('Persona boost. '+msg2,'encouragement')
     }
     if(d.escalation_tier)cue(d.escalation_tier,d.intent)
@@ -256,6 +261,7 @@ const DRIFT_LABELS={sync:'Sync',conflict_resolve:'Conflict',weak_reply:'Weak',go
 async function loadDrift(){
   const canvas=$('#driftCanvas'),legend=$('#driftLegend'),inf=$('#driftInfluence');
   canvas.style.display='none';legend.innerHTML='';inf.innerHTML='Loading...';
+  drawWeightDelta($('#weightDeltaCanvas'));
   try{
     const r=await fetch(API+'/persona-drift');const d=await r.json();
     if(!d.timeline.length){inf.innerHTML='No drift data yet. Sync, chat, or simulate to generate events.';return}
@@ -328,6 +334,47 @@ function drawDriftChart(canvas,d){
   }
   ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='7px sans-serif';
   if(simTrend.length>1)ctx.fillText('Time \u2192',pad.l+cw/2,pad.t+ch+16)
+}
+
+function drawWeightDelta(canvas){
+  try{
+    fetch(API+'/weight-history').then(r=>r.json()).then(d=>{
+      const h=d.history||[];
+      if(h.length<2){canvas.style.display='none';return}
+      canvas.style.display='block';
+      const ctx=canvas.getContext('2d');
+      const W=canvas.parentElement.clientWidth-4||220,H=80;
+      canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';
+      ctx.scale(2,2);
+      const pad={t:8,b:14,l:22,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+      ctx.clearRect(0,0,W,H);
+      const personas=['mentor','coach','teacher'];
+      const colors=['#89b4fa','#a6e3a1','#f9e2af'];
+      const maxV=100;
+      ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
+      for(let i=0;i<=4;i++){
+        const y=pad.t+ch-(i/4*ch),v=Math.round(i/4*maxV);
+        ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
+        ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y+2)
+      }
+      personas.forEach((p,pi)=>{
+        ctx.beginPath();ctx.strokeStyle=colors[pi];ctx.lineWidth=1.2;
+        h.forEach((pt,i)=>{
+          const w=pt.weights[p]||0;
+          const x=pad.l+(i/(h.length-1))*cw;
+          const y=pad.t+ch-(w/maxV*ch);
+          i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+        });ctx.stroke()
+      });
+      ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
+      ctx.fillText('weights over time',pad.l+cw/2,pad.t+ch+12);
+      personas.forEach((p,pi)=>{
+        ctx.fillStyle=colors[pi];
+        ctx.fillRect(pad.l+pi*44,pad.t-6,6,4);
+        ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.fillText(p,pad.l+pi*44+8,pad.t-2)
+      })
+    })
+  }catch(e){canvas.style.display='none'}
 }
 
 let dashNarrate=0;
@@ -457,6 +504,9 @@ async function checkBadgeAlerts(){
 $('#storyBtnTab').onclick=async()=>{
   try{const r=await fetch(API+'/unified-story');const d=await r.json();$('#storyPanel').innerHTML=d.chapters.map((c,i)=>'<div style="margin:2px 0;line-height:1.4">'+(i+1)+'. '+c+'</div>').join('');addControl('Story: '+d.narration);speakText(d.narration,d.emotion||'reflection')}catch(e){}
 };
+$('#orchStoryBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/orchestration-story');const d=await r.json();$('#storyPanel').innerHTML='<b>Orchestration Story</b><div style="margin-top:4px">'+d.chapters.map(c=>'<div style="margin:2px 0;line-height:1.4">\u2022 '+c+'</div>').join('')+'</div>';addControl('Orchestration: '+d.narration);speakText(d.narration,d.emotion||'encouragement')}catch(e){}
+};
 $('#impactNarrBtnTab').onclick=async()=>{
   try{const r=await fetch(API+'/contributor-impact');const d=await r.json();addControl('Impact: '+d.narration);const hasChanges=d.changes&&(d.changes.new_leader||d.changes.new_badges);speakText(d.narration,hasChanges?'joy':'encouragement')}catch(e){}
 };
@@ -472,6 +522,11 @@ $('#badgeTimelineBtn').onclick=async()=>{
   try{
     const r=await fetch(API+'/badge-history');const d=await r.json();
     if(!d.history||!d.history.length){panel.innerHTML='No badge history yet.';panel.style.display='block';return}
+    const recent=d.history.slice(-10);
+    const dates=[...new Set(recent.map(h=>new Date(h.timestamp).toLocaleDateString()))];
+    const narParts=dates.map(dt=>{const day=recent.filter(h=>new Date(h.timestamp).toLocaleDateString()===dt);return 'On '+dt+', '+day.map(h=>h.user_id+' earned '+h.badge+' '+h.name).join(', ')});
+    const nar='Badge history. '+narParts.join('. ')+'.';
+    addControl(nar);speakText(nar,'joy');
     panel.innerHTML='<b>Badge Timeline</b><div style="margin-top:2px">'+d.history.slice(-20).reverse().map(h=>'<div style="margin:1px 0;display:flex;gap:4px"><span style="color:var(--yellow)">'+h.badge+'</span><span style="color:var(--text2)">'+h.user_id+'</span><span style="color:var(--text3);margin-left:auto;font-size:8px">'+new Date(h.timestamp).toLocaleDateString()+'</span></div>').join('')+'</div>';
     panel.style.display='block'
   }catch(e){panel.innerHTML='Error';panel.style.display='block'}
