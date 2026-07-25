@@ -445,20 +445,32 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         INTENT_ESCALATION_COUNTER[intent_key] += 1
 
     avg_conf = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else 100
-    global DYNAMIC_BOOST
+    global DYNAMIC_BOOST, PREV_BOOST
+    mode_tag = "cloud" if HYBRID_MODE == "cloud" and not HYBRID_OFFLINE else "local"
     if CONSECUTIVE_LOW >= 5:
-        DYNAMIC_BOOST = {"persona": "coach", "reason": f"consecutive low scores ({CONSECUTIVE_LOW})"}
+        boost_amt = 10 if mode_tag == "cloud" else 8
+        DYNAMIC_BOOST = {"persona": "coach", "reason": f"consecutive low scores ({CONSECUTIVE_LOW})", "boost": boost_amt, "source": mode_tag}
     elif CONSECUTIVE_LOW >= 3:
-        DYNAMIC_BOOST = {"persona": "mentor", "reason": "escalation detected"}
+        boost_amt = 6 if mode_tag == "cloud" else 8
+        DYNAMIC_BOOST = {"persona": "mentor", "reason": "escalation detected", "boost": boost_amt, "source": mode_tag}
     elif avg_conf >= 80 and intent == "explain":
-        DYNAMIC_BOOST = {"persona": "teacher", "reason": "high confidence + explanation intent"}
+        boost_amt = 10 if mode_tag == "cloud" else 8
+        DYNAMIC_BOOST = {"persona": "teacher", "reason": "high confidence + explanation intent", "boost": boost_amt, "source": mode_tag}
     elif avg_conf >= 80:
-        DYNAMIC_BOOST = {"persona": "mentor", "reason": "high confidence baseline"}
+        boost_amt = 4 if mode_tag == "cloud" else 6
+        DYNAMIC_BOOST = {"persona": "mentor", "reason": "high confidence baseline", "boost": boost_amt, "source": mode_tag}
     else:
-        DYNAMIC_BOOST = {"persona": "mentor", "reason": "default"}
+        DYNAMIC_BOOST = {"persona": "mentor", "reason": "default", "boost": 0, "source": mode_tag}
     boost = DYNAMIC_BOOST["persona"]
-    if boost in weights:
-        weights[boost] = min(100, weights.get(boost, 50) + 8)
+    boost_amt = DYNAMIC_BOOST.get("boost", 8)
+    if boost in weights and boost_amt:
+        weights[boost] = min(100, weights.get(boost, 50) + boost_amt)
+    if DYNAMIC_BOOST != PREV_BOOST and PREV_BOOST is not None and DYNAMIC_BOOST.get("reason") != "default":
+        DYNAMIC_BOOST["changed"] = True
+    else:
+        DYNAMIC_BOOST["changed"] = False
+    global PREV_BOOST
+    PREV_BOOST = dict(DYNAMIC_BOOST)
 
     if weights:
         normalize_weights(weights)
@@ -1154,12 +1166,19 @@ async def badge_alerts():
         prev = set(PREV_BADGE_MAP.get(uid, []))
         gained = curr - prev
         for b in gained:
-            new_badges.append({"user_id": uid, "badge": b, "name": badge_names.get(b, b)})
+            nb = {"user_id": uid, "badge": b, "name": badge_names.get(b, b), "timestamp": datetime.now().isoformat()}
+            new_badges.append(nb)
+            BADGE_HISTORY.append(nb)
         PREV_BADGE_MAP[uid] = list(curr)
     if new_badges:
         parts = [f"{nb['user_id']} earned the {nb['name']} badge" for nb in new_badges]
         return {"alerts": new_badges, "narration": "Badge alert. " + ". ".join(parts) + "."}
     return {"alerts": [], "narration": None}
+
+
+@app.get("/api/badge-history")
+async def badge_history():
+    return {"history": BADGE_HISTORY[-50:]}
 
 
 @app.get("/api/hybrid-mode")
