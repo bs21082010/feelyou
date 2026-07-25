@@ -1226,6 +1226,19 @@ async def orchestration_story():
             if abs(delta) >= 5:
                 direction = "rose" if delta > 0 else "dropped"
                 chapters.append(f"Confidence {direction} {abs(delta)} percent over the last {len(recent)} interactions.")
+        if len(RECENT_SCORES) >= 5:
+            recent5 = RECENT_SCORES[-5:]
+            avg5 = sum(recent5) / len(recent5)
+            spread = round(max(recent5) - min(recent5), 1)
+            if spread <= 10:
+                chapters.append(f"Confidence stability maintained over the last {len(recent5)} interactions with low variance.")
+            elif spread > 25:
+                chapters.append(f"Confidence volatility detected with a {spread} point spread in the last {len(recent5)} interactions.")
+            healthy = sum(1 for s in recent5 if s >= 70)
+            if healthy == len(recent5):
+                chapters.append("All recent interactions show healthy confidence above 70 percent.")
+            elif healthy == 0:
+                chapters.append("All recent interactions show low confidence below 70 percent.")
     return {"narration": narration, "chapters": chapters, "emotion": emotion}
 
 
@@ -1266,6 +1279,8 @@ async def contributor_legacy():
             "badge_count": len(user_badges),
             "weight_influence": weight_influence,
             "events_by_type": dict(Counter(e["action"] for e in drift_events)),
+            "drift_timeline": [{"timestamp": e["timestamp"], "action": e["action"], "weights": e.get("weights", {})} for e in drift_events[-20:]],
+            "badge_timeline": [{"timestamp": b["timestamp"], "badge": b["badge"], "name": b["name"]} for b in user_badges[-10:]],
         })
     return {"legacy": legacy}
 
@@ -1286,6 +1301,16 @@ async def contributor_legacy_narration():
     narration = "Contributor legacy. " + " ".join(sentences)
     emotion = "encouragement" if any(u["badge_count"] > 0 for u in data.get("legacy", [])) else "reflection"
     return {"narration": narration, "emotion": emotion}
+
+
+@app.get("/api/persona-influence")
+async def persona_influence():
+    cumulative = defaultdict(int)
+    for e in PERSONA_DRIFT_LOG:
+        if e.get("weights"):
+            for p, v in e["weights"].items():
+                cumulative[p] += v * 0.5
+    return {"influence": dict(cumulative), "total": sum(cumulative.values())}
 
 
 @app.get("/api/session-replay/export")

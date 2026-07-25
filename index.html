@@ -198,7 +198,7 @@ async function chat(msg){
     const r2=await fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,persona:persona,weights:weights,conversation:conv})});
     const d=await r2.json();
     add('assistant',d.reply,`${d.emotion?'\u2728 '+d.emotion:''} \u2022 score: ${d.score}${d.intent?' \u2022 '+d.intent:''}${d.escalation_tier?' \u2022 tier '+d.escalation_tier:''}`);
-    weights=d.weights||weights;updateW();
+    weights=d.weights||weights;updateW();updateAvatarEvolution();
     if(d.dynamic_boost&&d.dynamic_boost.changed){
       const b=d.dynamic_boost;
       const reasonMap={'consecutive low scores':'after '+d.dynamic_boost.reason.match(/\d+/)?.[0]||'several'+' consecutive low confidence replies','escalation detected':'an escalation was detected','high confidence + explanation intent':'confidence is high with an explanation request','high confidence baseline':'consistently high confidence','default':'normal conditions'};
@@ -233,6 +233,26 @@ function cue(tier,intent){
     osc.frequency.setValueAtTime(fs[Math.min(tier-1,fs.length-1)],ctx.currentTime);
     gain.gain.setValueAtTime(0.25,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.2);
     osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.2)
+  }catch(e){}
+}
+
+async function updateAvatarEvolution(){
+  try{
+    const r=await fetch(API+'/persona-influence');const d=await r.json();
+    const inf=d.influence||{},total=d.total||1;
+    const personas=['mentor','coach','teacher'],colors=['#89b4fa','#a6e3a1','#f9e2af'];
+    personas.forEach((p,pi)=>{
+      const el=document.querySelector('.p-avatar[data-p="'+p+'"]');
+      if(!el)return;
+      const val=inf[p]||0,ratio=Math.min(val/total,1);
+      const opacity=.6+ratio*.4;
+      const size=22+Math.round(ratio*8);
+      const glow=ratio*6;
+      el.style.opacity=opacity;
+      el.style.width=size+'px';el.style.height=size+'px';
+      el.style.fontSize=Math.round(size/2.4)+'px';
+      if(glow>1)el.style.boxShadow='0 0 '+glow+'px '+colors[pi];else el.style.boxShadow='none'
+    })
   }catch(e){}
 }
 
@@ -614,6 +634,40 @@ function pulseAvatar(persona){
   if(el){el.classList.remove('boosted');void el.offsetWidth;el.classList.add('boosted')}
 }
 
+function drawContributorChart(canvas,u){
+  try{
+    const dt=u.drift_timeline||[],bt=u.badge_timeline||[];
+    if(!dt.length&&!bt.length){canvas.style.display='none';return}
+    canvas.style.display='block';
+    const ctx=canvas.getContext('2d');
+    const W=canvas.parentElement.clientWidth-4||200,H=36;
+    canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';
+    ctx.scale(2,2);
+    const pad={t:4,b:6,l:4,r:4},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+    ctx.clearRect(0,0,W,H);
+    const personas=['mentor','coach','teacher'],colors=['#89b4fa','#a6e3a1','#f9e2af'];
+    if(dt.length>=2){
+      personas.forEach((p,pi)=>{
+        ctx.beginPath();ctx.strokeStyle=colors[pi];ctx.lineWidth=.8;
+        dt.forEach((pt,i)=>{
+          const w=pt.weights&&pt.weights[p]||0;
+          const x=pad.l+(i/(dt.length-1))*cw;
+          const y=pad.t+ch-(w/100*ch);
+          i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+        });ctx.stroke()
+      })
+    }
+    bt.forEach(b=>{
+      const idx=dt.length?Math.round((dt.length-1)*0.8):0;
+      const x=pad.l+(idx/(Math.max(dt.length,1)))*cw;
+      ctx.fillStyle='var(--yellow)';ctx.font='6px sans-serif';ctx.textAlign='center';
+      ctx.fillText('\u2B50',x,pad.t+ch+4)
+    });
+    ctx.fillStyle='var(--text3)';ctx.font='5px sans-serif';ctx.textAlign='left';
+    ctx.fillText('drift + badges',pad.l,pad.t+3)
+  }catch(e){canvas.style.display='none'}
+}
+
 $('#sessionReplayBtn').onclick=async()=>{
   try{
     const r=await fetch(API+'/session-replay');const d=await r.json();
@@ -628,19 +682,24 @@ $('#legacyBtn').onclick=async()=>{
   try{
     const r=await fetch(API+'/contributor-legacy');const d=await r.json();
     if(!d.legacy||!d.legacy.length){$('#storyPanel').innerHTML='<b>Contributor Legacy</b><div style="margin-top:4px">No contributor data yet.</div>';return}
-    const html='<b>Contributor Legacy</b>'+d.legacy.map(u=>'<div style="margin:6px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"><div style="display:flex;justify-content:space-between"><span style="font-weight:600;color:var(--blue)">'+u.user_id+'</span><span style="font-size:8px;color:var(--text3)">'+u.total_events+' events</span></div><div style="font-size:8px;color:var(--text2)">Last: '+u.last_action+' ('+(u.last_seen?new Date(u.last_seen).toLocaleDateString():'')+')</div><div style="font-size:8px;color:var(--text2)">Badges: '+(u.badges.length?u.badges.map(b=>b.badge+' '+b.name).join(', '):'none')+'</div><div style="font-size:8px;color:var(--text2)">Weight influence: '+Object.entries(u.weight_influence||{}).map(([k,v])=>k+':'+v).join(', ')+'</div><div style="font-size:8px;color:var(--text3)">Events: '+Object.entries(u.events_by_type||{}).map(([k,v])=>k+' ('+v+')').join(', ')+'</div></div>').join('');
+    const html='<b>Contributor Legacy</b>'+d.legacy.map((u,i)=>'<div style="margin:6px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"><div style="display:flex;justify-content:space-between"><span style="font-weight:600;color:var(--blue)">'+u.user_id+'</span><span style="font-size:8px;color:var(--text3)">'+u.total_events+' events</span></div><div style="font-size:8px;color:var(--text2)">Last: '+u.last_action+' ('+(u.last_seen?new Date(u.last_seen).toLocaleDateString():'')+')</div><div style="font-size:8px;color:var(--text2)">Badges: '+(u.badges.length?u.badges.map(b=>b.badge+' '+b.name).join(', '):'none')+'</div><div style="font-size:8px;color:var(--text2)">Weight influence: '+Object.entries(u.weight_influence||{}).map(([k,v])=>k+':'+v).join(', ')+'</div><div style="font-size:8px;color:var(--text3)">Events: '+Object.entries(u.events_by_type||{}).map(([k,v])=>k+' ('+v+')').join(', ')+'</div><canvas class="legacyChart" data-idx="'+i+'" style="width:100%;height:36px;border-radius:var(--radius-sm);background:var(--surface);margin-top:2px"></canvas></div>').join('');
     $('#storyPanel').innerHTML=html;
+    d.legacy.forEach((u,i)=>{
+      const c=document.querySelector('.legacyChart[data-idx="'+i+'"]');if(!c)return;
+      drawContributorChart(c,u)
+    });
     addControl('Contributor legacy loaded for '+d.legacy.length+' contributors');
     speakText('Contributor legacy has '+d.legacy.length+' contributors.','encouragement')
   }catch(e){}
 };
 $('#exportBtn').onclick=async()=>{
   try{
-    const r=await fetch(API+'/session-replay/export');const blob=await r.blob();
+    const [r,rn]=await Promise.all([fetch(API+'/session-replay/export'),fetch(API+'/session-replay')]);
+    const blob=await r.blob();const dn=await rn.json();
     const url=URL.createObjectURL(blob);const a=document.createElement('a');
     a.href=url;a.download='session-report-'+new Date().toISOString().slice(0,10)+'.txt';
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-    addControl('Session report exported');speakText('Session report downloaded.','reflection')
+    addControl('Session report exported: '+dn.narration);speakText(dn.narration,dn.emotion||'reflection')
   }catch(e){}
 };
 $('#legacyNarrBtn').onclick=async()=>{
@@ -740,7 +799,7 @@ vb.onclick=()=>{
   R.start()
 };
 
-updateW();refreshMetrics();setInterval(refreshMetrics,15000);setInterval(checkBadgeAlerts,20000);setInterval(refreshDashboard,55000);
+updateW();updateAvatarEvolution();refreshMetrics();setInterval(refreshMetrics,15000);setInterval(checkBadgeAlerts,20000);setInterval(refreshDashboard,55000);
 add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights.</span>')
 </script>
 </body>
