@@ -103,7 +103,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-story">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
       <canvas id="replayCanvas" style="display:none;width:100%;height:100px;border-radius:var(--radius-sm);background:var(--surface2);margin:4px 0"></canvas>
       <div id="badgeTimelinePanel" style="display:none;font-size:9px;color:var(--text2);max-height:120px;overflow-y:auto;margin:4px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
@@ -113,7 +113,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-drift">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:11px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Narrate</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:11px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Narrate</button><button class="btn" id="animateDriftBtn" style="background:var(--surface3);color:var(--text);font-size:11px">▶️ Animate</button></div>
       <canvas id="driftCanvas" style="display:none;width:100%;height:140px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
       <div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:4px 0"></div>
       <div id="driftInfluence" class="stat" style="font-size:9px;max-height:100px;overflow-y:auto">Load drift data</div>
@@ -350,6 +350,7 @@ function drawWeightDelta(canvas){
   try{
     fetch(API+'/weight-history').then(r=>r.json()).then(d=>{
       const h=d.history||[];
+      const scores=d.score_history||[];
       if(h.length<2){canvas.style.display='none';return}
       canvas.style.display='block';
       const ctx=canvas.getContext('2d');
@@ -376,13 +377,25 @@ function drawWeightDelta(canvas){
           i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
         });ctx.stroke()
       });
+      if(scores.length>=2){
+        ctx.beginPath();ctx.strokeStyle='rgba(243,139,168,0.6)';ctx.lineWidth=.8;ctx.setLineDash([2,2]);
+        scores.forEach((s,i)=>{
+          const x=pad.l+(i/(scores.length-1))*cw;
+          const y2=pad.t+ch-(s/maxV*ch);
+          i===0?ctx.moveTo(x,y2):ctx.lineTo(x,y2)
+        });ctx.stroke();ctx.setLineDash([])
+      }
       ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
-      ctx.fillText('weights over time',pad.l+cw/2,pad.t+ch+12);
+      ctx.fillText('weights + confidence',pad.l+cw/2,pad.t+ch+12);
       personas.forEach((p,pi)=>{
         ctx.fillStyle=colors[pi];
         ctx.fillRect(pad.l+pi*44,pad.t-6,6,4);
         ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.fillText(p,pad.l+pi*44+8,pad.t-2)
-      })
+      });
+      if(scores.length>=2){
+        ctx.fillStyle='rgba(243,139,168,0.6)';ctx.fillRect(pad.l+132,pad.t-6,6,4);
+        ctx.fillStyle='var(--text3)';ctx.fillText('confidence',pad.l+140,pad.t-2)
+      }
     })
   }catch(e){canvas.style.display='none'}
 }
@@ -619,6 +632,78 @@ $('#legacyBtn').onclick=async()=>{
     $('#storyPanel').innerHTML=html;
     addControl('Contributor legacy loaded for '+d.legacy.length+' contributors');
     speakText('Contributor legacy has '+d.legacy.length+' contributors.','encouragement')
+  }catch(e){}
+};
+$('#exportBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/session-replay/export');const blob=await r.blob();
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download='session-report-'+new Date().toISOString().slice(0,10)+'.txt';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    addControl('Session report exported');speakText('Session report downloaded.','reflection')
+  }catch(e){}
+};
+$('#legacyNarrBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/contributor-legacy-narration');const d=await r.json();$('#storyPanel').innerHTML='<b>Legacy Narration</b><div style="margin-top:4px;line-height:1.4">'+d.narration+'</div>';addControl('Legacy: '+d.narration);speakText(d.narration,d.emotion||'encouragement')}catch(e){}
+};
+
+let animDriftInterval=null;
+function animateDriftLines(canvas,data,stepCb){
+  if(animDriftInterval){clearInterval(animDriftInterval);animDriftInterval=null}
+  const h=data.history||[],scores=data.score_history||[];
+  if(h.length<2)return;
+  const W=canvas.parentElement.clientWidth-4||220,H=140;
+  canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d');ctx.scale(2,2);
+  const pad={t:8,b:18,l:24,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+  const personas=['mentor','coach','teacher'],colors=['#89b4fa','#a6e3a1','#f9e2af'],maxV=100;
+  let step=2;
+  animDriftInterval=setInterval(()=>{
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
+    for(let i=0;i<=4;i++){
+      const y2=pad.t+ch-(i/4*ch),v=Math.round(i/4*maxV);
+      ctx.beginPath();ctx.moveTo(pad.l,y2);ctx.lineTo(W-pad.r,y2);ctx.strokeStyle='#45475a';ctx.stroke();
+      ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y2+2)
+    }
+    const visible=h.slice(0,step);
+    personas.forEach((p,pi)=>{
+      ctx.beginPath();ctx.strokeStyle=colors[pi];ctx.lineWidth=1.2;
+      visible.forEach((pt,i)=>{
+        const w=pt.weights[p]||0;
+        const x=pad.l+(i/(h.length-1))*cw;
+        const y3=pad.t+ch-(w/maxV*ch);
+        i===0?ctx.moveTo(x,y3):ctx.lineTo(x,y3)
+      });ctx.stroke()
+    });
+    if(scores.length>=2){
+      ctx.beginPath();ctx.strokeStyle='rgba(243,139,168,0.6)';ctx.lineWidth=.8;ctx.setLineDash([2,2]);
+      const sv=scores.slice(0,Math.min(step,scores.length));
+      sv.forEach((s,i)=>{
+        const x=pad.l+(i/(scores.length-1))*cw;
+        const y4=pad.t+ch-(s/maxV*ch);
+        i===0?ctx.moveTo(x,y4):ctx.lineTo(x,y4)
+      });ctx.stroke();ctx.setLineDash([])
+    }
+    ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
+    ctx.fillText('step '+step+'/'+h.length,pad.l+cw/2,pad.t+ch+14);
+    personas.forEach((p,pi)=>{
+      ctx.fillStyle=colors[pi];ctx.fillRect(pad.l+pi*44,pad.t-6,6,4);
+      ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.fillText(p,pad.l+pi*44+8,pad.t-2)
+    });
+    if(stepCb&&visible.length)stepCb(visible[visible.length-1],step);
+    step++;
+    if(step>h.length){clearInterval(animDriftInterval);animDriftInterval=null}
+  },400)
+}
+$('#animateDriftBtn').onclick=async()=>{
+  try{
+    const canvas=$('#driftCanvas');canvas.style.display='block';
+    const r=await fetch(API+'/weight-history');const d=await r.json();
+    if((d.history||[]).length<2){$('#driftInfluence').innerHTML='Not enough data to animate';return}
+    animateDriftLines(canvas,d,(last,stp)=>{
+      if(last&&last.boost&&last.boost.changed)pulseAvatar(last.boost.persona||'coach')
+    })
   }catch(e){}
 };
 

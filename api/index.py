@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -1187,7 +1187,7 @@ async def badge_history():
 
 @app.get("/api/weight-history")
 async def weight_history():
-    return {"history": WEIGHT_HISTORY[-50:]}
+    return {"history": WEIGHT_HISTORY[-50:], "score_history": RECENT_SCORES[-50:]}
 
 
 @app.get("/api/orchestration-story")
@@ -1268,6 +1268,58 @@ async def contributor_legacy():
             "events_by_type": dict(Counter(e["action"] for e in drift_events)),
         })
     return {"legacy": legacy}
+
+
+@app.get("/api/contributor-legacy-narration")
+async def contributor_legacy_narration():
+    data = await contributor_legacy()
+    sentences = []
+    for u in data.get("legacy", []):
+        parts = [f"Over {u['total_events']} events"]
+        if u["badge_count"]:
+            parts.append(f"{u['badge_count']} badges")
+        if u.get("weight_influence"):
+            boosts = [f"{p} plus {v}" for p, v in u["weight_influence"].items() if v > 0]
+            if boosts:
+                parts.append("influenced " + ", ".join(boosts))
+        sentences.append(f"{u['user_id']}: " + ", ".join(parts) + ".")
+    narration = "Contributor legacy. " + " ".join(sentences)
+    emotion = "encouragement" if any(u["badge_count"] > 0 for u in data.get("legacy", [])) else "reflection"
+    return {"narration": narration, "emotion": emotion}
+
+
+@app.get("/api/session-replay/export")
+async def session_replay_export():
+    story_resp = await orchestration_story()
+    weight_data = WEIGHT_HISTORY[-50:]
+    score_data = RECENT_SCORES[-20:]
+    badge_data = BADGE_HISTORY[-20:]
+    now_str = datetime.utcnow().isoformat()
+    lines = [
+        f"youfeel Session Report — {now_str}",
+        f"Mode: {HYBRID_MODE}",
+        "",
+        "=== NARRATION ===",
+        story_resp["narration"],
+        "",
+        "=== CHAPTERS ===",
+    ]
+    lines.extend(f"  {i+1}. {c}" for i, c in enumerate(story_resp["chapters"]))
+    lines.extend(["", "=== WEIGHT HISTORY ==="])
+    for w in weight_data:
+        w_str = json.dumps(w)
+        lines.append(f"  {w_str}")
+    lines.extend(["", "=== SCORE HISTORY ==="])
+    lines.append(f"  {json.dumps(score_data)}")
+    lines.extend(["", "=== BADGE HISTORY ==="])
+    for b in badge_data:
+        lines.append(f"  {b['user_id']} — {b['badge']} {b['name']} ({b['timestamp']})")
+    text = "\n".join(lines)
+    return Response(
+        content=text,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="session-report-{now_str[:10]}.txt"'},
+    )
 
 
 @app.get("/api/hybrid-mode")
