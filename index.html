@@ -29,6 +29,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .msg{max-width:88%;padding:10px 14px;border-radius:var(--radius);font-size:14px;line-height:1.5;animation:fadeIn .2s;word-wrap:break-word}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes barPulse{0%{opacity:1}50%{opacity:.6}100%{opacity:1}}
+@keyframes avatarPulse{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(137,180,250,.5)}50%{transform:scale(1.25);box-shadow:0 0 8px 2px rgba(137,180,250,.4)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(137,180,250,0)}}
+.p-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--bg);transition:transform .3s,box-shadow .3s;cursor:default}
+.p-avatar.boosted{animation:avatarPulse .6s ease-in-out 2}
 .user{background:var(--blue);color:var(--bg);align-self:flex-end;border-bottom-right-radius:4px}
 .assistant{background:var(--surface2);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px}
 .msg .meta{font-size:10px;color:var(--text3);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
@@ -69,6 +72,11 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
     <button class="btn" id="voiceBtn" style="background:var(--surface3);color:var(--text);margin-left:auto">🎤</button>
   </div>
   <div id="weights" style="width:100%;margin:2px 0"></div>
+  <div id="personaAvatars" style="display:flex;gap:6px;width:100%;padding:2px 0;justify-content:center">
+    <div class="p-avatar" data-p="mentor" style="background:var(--blue)">M</div>
+    <div class="p-avatar" data-p="coach" style="background:var(--green)">C</div>
+    <div class="p-avatar" data-p="teacher" style="background:var(--yellow)">T</div>
+  </div>
   <div class="mini-metrics" id="miniMetrics"><span id="metricConf">—%</span><span id="metricLeader">—</span><span id="metricStatus">offline</span></div>
   <div class="nav-tabs" id="navTabs">
     <button class="tab-btn active" data-tab="chat">💬 Chat</button>
@@ -95,8 +103,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-story">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
+      <canvas id="replayCanvas" style="display:none;width:100%;height:100px;border-radius:var(--radius-sm);background:var(--surface2);margin:4px 0"></canvas>
       <div id="badgeTimelinePanel" style="display:none;font-size:9px;color:var(--text2);max-height:120px;overflow-y:auto;margin:4px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
       <hr style="border-color:var(--surface3);margin:8px 0">
       <div id="leaderboardPanel" class="stat" style="font-size:9px;min-height:30px">Leaderboard loading...</div>
@@ -195,7 +204,8 @@ async function chat(msg){
       const reasonMap={'consecutive low scores':'after '+d.dynamic_boost.reason.match(/\d+/)?.[0]||'several'+' consecutive low confidence replies','escalation detected':'an escalation was detected','high confidence + explanation intent':'confidence is high with an explanation request','high confidence baseline':'consistently high confidence','default':'normal conditions'};
       const naturalReason=reasonMap[b.reason]||b.reason;
       const msg2=b.persona+' boosted +'+b.boost+' '+naturalReason+'. Source: '+b.source;
-      addControl('Boost: '+msg2);speakText('Persona boost. '+msg2,'encouragement')
+      addControl('Boost: '+msg2);speakText('Persona boost. '+msg2,'encouragement');
+      pulseAvatar(b.persona)
     }
     if(d.escalation_tier)cue(d.escalation_tier,d.intent)
   }catch(e){add('assistant','Error: '+e.message)}
@@ -534,6 +544,82 @@ $('#badgeTimelineBtn').onclick=async()=>{
 $('#impactNarrBtnLB').onclick=$('#impactNarrBtnTab').onclick;
 $('#narrateContribBtn').onclick=async()=>{
   try{const r=await fetch(API+'/contributor-narration');const d=await r.json();addControl('Contributors: '+d.narration);speakText(d.narration,'encouragement')}catch(e){}
+};
+
+function drawReplayChart(canvas,data){
+  try{
+    const h=data.weight_history||[];
+    const scores=data.score_history||[];
+    if(h.length<2&&scores.length<2){canvas.style.display='none';return}
+    canvas.style.display='block';
+    const ctx=canvas.getContext('2d');
+    const W=canvas.parentElement.clientWidth-4||280,H=100;
+    canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';
+    ctx.scale(2,2);
+    const pad={t:10,b:16,l:24,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
+    ctx.fillText('Weights + Confidence',pad.l+cw/2,6);
+    const personas=['mentor','coach','teacher'];
+    const colors=['#89b4fa','#a6e3a1','#f9e2af'];
+    const maxV=100;
+    ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='5px sans-serif';
+    for(let i=0;i<=4;i++){
+      const y=pad.t+ch-(i/4*ch),v=Math.round(i/4*maxV);
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
+      ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y+2)
+    }
+    if(h.length>=2){
+      personas.forEach((p,pi)=>{
+        ctx.beginPath();ctx.strokeStyle=colors[pi];ctx.lineWidth=.8;
+        h.forEach((pt,i)=>{
+          const w=pt.weights[p]||0;
+          const x=pad.l+(i/(h.length-1))*cw;
+          const y2=pad.t+ch-(w/maxV*ch);
+          i===0?ctx.moveTo(x,y2):ctx.lineTo(x,y2)
+        });ctx.stroke()
+      })
+    }
+    if(scores.length>=2){
+      ctx.beginPath();ctx.strokeStyle='rgba(243,139,168,0.6)';ctx.lineWidth=.8;ctx.setLineDash([2,2]);
+      scores.forEach((s,i)=>{
+        const x=pad.l+(i/(scores.length-1))*cw;
+        const y2=pad.t+ch-(s/maxV*ch);
+        i===0?ctx.moveTo(x,y2):ctx.lineTo(x,y2)
+      });ctx.stroke();ctx.setLineDash([])
+    }
+    ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.font='5px sans-serif';
+    ctx.fillStyle='#89b4fa';ctx.fillRect(pad.l,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('mentor',pad.l+8,pad.t+ch+5);
+    ctx.fillStyle='#a6e3a1';ctx.fillRect(pad.l+40,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('coach',pad.l+48,pad.t+ch+5);
+    ctx.fillStyle='#f9e2af';ctx.fillRect(pad.l+80,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('teacher',pad.l+88,pad.t+ch+5);
+    ctx.fillStyle='rgba(243,139,168,0.6)';ctx.fillRect(pad.l+130,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('confidence',pad.l+138,pad.t+ch+5)
+  }catch(e){canvas.style.display='none'}
+}
+
+function pulseAvatar(persona){
+  const el=document.querySelector('.p-avatar[data-p="'+persona+'"]');
+  if(el){el.classList.remove('boosted');void el.offsetWidth;el.classList.add('boosted')}
+}
+
+$('#sessionReplayBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/session-replay');const d=await r.json();
+    $('#storyPanel').innerHTML='<b>Session Replay</b><div style="margin-top:4px">'+d.chapters.map((c,i)=>'<div style="margin:2px 0;line-height:1.4">'+(i+1)+'. '+c+'</div>').join('')+'</div>';
+    addControl('Replay: '+d.narration);speakText(d.narration,d.emotion||'encouragement');
+    const boosts=d.weight_history&&d.weight_history.filter(w=>w.boost&&w.boost.changed);
+    if(boosts&&boosts.length)setTimeout(()=>{pulseAvatar(boosts[boosts.length-1].boost.persona||'coach')},500);
+    drawReplayChart($('#replayCanvas'),d)
+  }catch(e){}
+};
+$('#legacyBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/contributor-legacy');const d=await r.json();
+    if(!d.legacy||!d.legacy.length){$('#storyPanel').innerHTML='<b>Contributor Legacy</b><div style="margin-top:4px">No contributor data yet.</div>';return}
+    const html='<b>Contributor Legacy</b>'+d.legacy.map(u=>'<div style="margin:6px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"><div style="display:flex;justify-content:space-between"><span style="font-weight:600;color:var(--blue)">'+u.user_id+'</span><span style="font-size:8px;color:var(--text3)">'+u.total_events+' events</span></div><div style="font-size:8px;color:var(--text2)">Last: '+u.last_action+' ('+(u.last_seen?new Date(u.last_seen).toLocaleDateString():'')+')</div><div style="font-size:8px;color:var(--text2)">Badges: '+(u.badges.length?u.badges.map(b=>b.badge+' '+b.name).join(', '):'none')+'</div><div style="font-size:8px;color:var(--text2)">Weight influence: '+Object.entries(u.weight_influence||{}).map(([k,v])=>k+':'+v).join(', ')+'</div><div style="font-size:8px;color:var(--text3)">Events: '+Object.entries(u.events_by_type||{}).map(([k,v])=>k+' ('+v+')').join(', ')+'</div></div>').join('');
+    $('#storyPanel').innerHTML=html;
+    addControl('Contributor legacy loaded for '+d.legacy.length+' contributors');
+    speakText('Contributor legacy has '+d.legacy.length+' contributors.','encouragement')
+  }catch(e){}
 };
 
 function switchTab(tabId){

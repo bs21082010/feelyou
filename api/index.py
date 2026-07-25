@@ -1219,7 +1219,55 @@ async def orchestration_story():
     chapters.append(f"Running in {mode} mode.")
     narration = "Session overview. " + " ".join(chapters)
     emotion = compute_narration_emotion(avg_conf=round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None, escalations=len(ESCALATION_EVENTS))
+    if RECENT_SCORES:
+        recent = RECENT_SCORES[-10:]
+        if len(recent) >= 2:
+            delta = round(recent[-1] - recent[0], 1)
+            if abs(delta) >= 5:
+                direction = "rose" if delta > 0 else "dropped"
+                chapters.append(f"Confidence {direction} {abs(delta)} percent over the last {len(recent)} interactions.")
     return {"narration": narration, "chapters": chapters, "emotion": emotion}
+
+
+@app.get("/api/session-replay")
+async def session_replay():
+    story_resp = await orchestration_story()
+    weight_data = WEIGHT_HISTORY[-50:]
+    score_history = RECENT_SCORES[-20:]
+    return {
+        "narration": story_resp["narration"],
+        "chapters": story_resp["chapters"],
+        "emotion": story_resp["emotion"],
+        "weight_history": weight_data,
+        "score_history": score_history,
+        "badge_history": BADGE_HISTORY[-20:],
+    }
+
+
+@app.get("/api/contributor-legacy")
+async def contributor_legacy():
+    users = set(e["user_id"] for e in PERSONA_DRIFT_LOG if e["user_id"] not in ("simulation", "federated"))
+    badge_names = {"\U0001F3C6": "Trophy", "\U0001F947": "Gold", "\U0001F948": "Silver", "\u2B50": "Star", "\U0001F504": "Syncer", "\u2705": "Clean", "\u26A1": "Energizer", "\U0001F3A4": "Narrator", "\U0001F9E9": "Strategist", "\U0001F91D": "Diplomat", "\U0001F31F": "Pioneer"}
+    legacy = []
+    for uid in sorted(users):
+        drift_events = [e for e in PERSONA_DRIFT_LOG if e["user_id"] == uid]
+        user_badges = [b for b in BADGE_HISTORY if b["user_id"] == uid]
+        weight_snaps = [e["weights"] for e in drift_events if e.get("weights")]
+        weight_influence = {}
+        for snap in weight_snaps:
+            for p, v in snap.items():
+                weight_influence[p] = v
+        legacy.append({
+            "user_id": uid,
+            "total_events": len(drift_events),
+            "last_action": drift_events[-1]["action"] if drift_events else None,
+            "last_seen": drift_events[-1]["timestamp"] if drift_events else None,
+            "badges": [{"badge": b["badge"], "name": b["name"], "timestamp": b["timestamp"]} for b in user_badges],
+            "badge_count": len(user_badges),
+            "weight_influence": weight_influence,
+            "events_by_type": dict(Counter(e["action"] for e in drift_events)),
+        })
+    return {"legacy": legacy}
 
 
 @app.get("/api/hybrid-mode")
