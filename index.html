@@ -9,18 +9,22 @@
 :root{--bg:#1e1e2e;--surface:#181825;--surface2:#313244;--surface3:#45475a;--text:#cdd6f4;--text2:#a6adc8;--text3:#6c7086;--blue:#89b4fa;--green:#a6e3a1;--yellow:#f9e2af;--red:#f38ba8;--radius:12px;--radius-sm:8px}
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.5;display:flex;flex-direction:column}
-.sidebar{background:var(--surface);border-bottom:1px solid var(--surface3);padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-shrink:0;z-index:10}
-.sidebar .brand{font-size:18px;font-weight:700;color:var(--blue);margin-right:8px;white-space:nowrap}
-.sidebar label{font-size:11px;color:var(--text2);display:none}
-.sidebar select{padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:13px;outline:none;cursor:pointer;max-width:120px}
-.sidebar .btn{padding:5px 12px;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s}
+.sidebar{background:var(--surface);border-bottom:1px solid var(--surface3);padding:6px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;flex-shrink:0;z-index:10}
+.sidebar .brand{font-size:16px;font-weight:700;color:var(--blue);margin-right:6px;white-space:nowrap}
+.sidebar select{padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:12px;outline:none;cursor:pointer;max-width:100px}
+.sidebar .btn{padding:4px 8px;border:none;border-radius:var(--radius-sm);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s}
 .sidebar .btn:hover{opacity:.8}
-.toggle-controls{background:var(--surface2);color:var(--text);padding:5px 10px;border-radius:var(--radius-sm);border:none;font-size:11px;cursor:pointer;margin-left:auto;white-space:nowrap}
-.controls-panel{display:none;width:100%;padding:8px 0 4px;gap:8px}
-.controls-panel.open{display:flex;flex-direction:column}
+.nav-tabs{display:flex;gap:2px;width:100%;margin:4px 0 2px}
+.nav-tabs .tab-btn{padding:3px 8px;border:none;border-radius:var(--radius-sm);font-size:10px;cursor:pointer;background:var(--surface2);color:var(--text3);transition:all .2s;flex:1;text-align:center}
+.nav-tabs .tab-btn.active{background:var(--blue);color:var(--bg);font-weight:600}
+.nav-tabs .tab-btn:hover{opacity:.8}
+.mini-metrics{display:flex;gap:8px;width:100%;font-size:9px;color:var(--text3);padding:2px 0}
+.mini-metrics span{white-space:nowrap}
 .stat{font-size:11px;color:var(--text2);line-height:1.4}
 .stat b{color:var(--text)}
 .main{flex:1;display:flex;flex-direction:column;min-height:0}
+.tab-content{display:none;flex:1;flex-direction:column;min-height:0}
+.tab-content.active{display:flex}
 .msgs{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
 .msg{max-width:88%;padding:10px 14px;border-radius:var(--radius);font-size:14px;line-height:1.5;animation:fadeIn .2s;word-wrap:break-word}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -35,70 +39,104 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 .input-bar .btn:hover{opacity:.85}
 .listening{color:var(--yellow);font-size:12px;animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.llm-banner{width:100%;padding:3px 8px;border-radius:var(--radius-sm);font-size:9px;text-align:center;margin:2px 0}
+.llm-banner.online{background:var(--green);color:var(--bg)}
+.llm-banner.offline{background:var(--yellow);color:var(--bg)}
+.llm-banner.mock{background:var(--surface3);color:var(--text3)}
+.panel-scroll{flex:1;overflow-y:auto;padding:10px 12px}
+.panel-scroll .stat{font-size:10px}
 @media(min-width:768px){
   body{flex-direction:row}
-  .sidebar{width:280px;flex-direction:column;align-items:stretch;border-bottom:none;border-right:1px solid var(--surface3);padding:16px;overflow-y:auto;flex-shrink:0}
-  .sidebar .brand{font-size:20px;margin-bottom:8px}
-  .sidebar label{display:block;margin-top:8px}
-  .sidebar select{max-width:100%;padding:6px 10px;font-size:13px}
-  .sidebar .btn{padding:8px 16px;font-size:13px}
-  .toggle-controls{display:none}
-  .controls-panel{display:flex !important;flex-direction:column;gap:10px;padding:8px 0}
+  .sidebar{width:200px;flex-direction:column;align-items:stretch;border-bottom:none;border-right:1px solid var(--surface3);padding:12px;overflow-y:auto;flex-shrink:0}
+  .sidebar .brand{font-size:18px;margin-bottom:4px}
+  .sidebar select{max-width:100%;padding:4px 8px;font-size:12px}
+  .sidebar .btn{padding:6px 12px;font-size:12px}
+  .nav-tabs .tab-btn{font-size:11px;padding:4px 10px}
   .msgs{padding:16px 20px}
   .msg{max-width:75%;font-size:15px}
   .input-bar{padding:12px 20px}
   .input-bar input{font-size:14px}
 }
-@media(min-width:1024px){.sidebar{width:320px}.msg{max-width:70%}}
+@media(min-width:1024px){.sidebar{width:220px}.msg{max-width:70%}}
 </style>
 </head>
 <body>
 <div class="sidebar" id="sidebar">
-  <span class="brand">youfeel</span>
-  <select id="persona"><option value="mentor">Mentor</option><option value="coach">Coach</option><option value="teacher">Teacher</option><option value="mentor:50+coach:30+teacher:20">Blended</option></select>
-  <button class="btn" id="voiceBtn" style="background:var(--surface3);color:var(--text)">🎤 Voice</button>
-  <span id="voiceStatus" class="stat" style="font-size:11px">Idle</span>
-  <button class="toggle-controls" id="toggleCtrl">▼ Controls</button>
-  <div class="controls-panel" id="controlsPanel">
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Weights</label><div id="weights"></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Dashboard <button class="btn" id="dashBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳</button><button class="btn" id="dashNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Auto</button></label><canvas id="dashCanvas" style="display:none;width:100%;height:60px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="dashPanel" class="stat" style="font-size:9px;line-height:1.5">Loading...</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Stats</label><div id="stats" class="stat">Loading...</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Heatmap & Reinforce</label><div id="heatmap"></div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn" id="narrateHeatBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button><button class="btn" id="reinforceBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Reinforce</button></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Training Cycles</label><div id="trainingStats" class="stat">No training data</div><div id="trainingList" style="font-size:10px;color:var(--text3);max-height:60px;overflow-y:auto;margin:2px 0"></div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="trainNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate Training</button><button class="btn" id="clearTrainBtn" style="background:var(--red);color:var(--bg);font-size:10px">✕ Clear</button></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Reinforcement</label><div id="adaptiveStatus" class="stat">Checking...</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="adaptiveBtn" style="background:var(--yellow);color:var(--bg);font-size:10px">⚡ Auto-Reinforce</button></div><div id="adaptiveHistory" style="font-size:10px;color:var(--text3);max-height:40px;overflow-y:auto;margin:2px 0"></div><canvas id="covCanvas" style="display:none;width:100%;height:80px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Adaptive Tuning <button class="btn" id="tuneBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Analyze</button></label><div id="tunePanel" class="stat" style="font-size:9px;max-height:40px;overflow-y:auto">Run analysis to see suggested persona weight changes</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Simulation</label><div style="display:flex;gap:4px;margin:2px 0"><select id="simBlendSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="all">All blends</option><option value="mentor:100+coach:0+teacher:0">Mentor only</option><option value="mentor:0+coach:100+teacher:0">Coach only</option><option value="mentor:0+coach:0+teacher:100">Teacher only</option><option value="mentor:34+coach:33+teacher:33">Balanced</option><option value="mentor:60+coach:20+teacher:20">Mentor-heavy</option></select><input id="simRounds" value="10" style="width:36px;padding:3px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;text-align:center;outline:none"><button class="btn" id="simBtn" style="background:var(--green);color:var(--bg);font-size:10px">▶ Run</button><button class="btn" id="fedSimBtn" style="background:var(--blue);color:var(--bg);font-size:10px">👥 Fed</button><button class="btn" id="fedSimNarrBtn" style="background:var(--surface3);color:var(--text);font-size:10px">🔊 Narrate</button></div><canvas id="simCanvas" style="display:none;width:100%;height:140px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="simResults" class="stat" style="font-size:10px">Ready</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Escalation Reinforce</label><div id="escStatus" class="stat">No data</div><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="escReinfBtn" style="background:var(--red);color:var(--bg);font-size:10px">🔁 Reinforce Patterns</button></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Persona Drift <button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:1px 6px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><canvas id="driftCanvas" style="display:none;width:100%;height:120px;margin:4px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas><div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:2px 0"></div><div id="driftInfluence" class="stat" style="font-size:9px;max-height:60px;overflow-y:auto">Load drift data to see who shaped persona balance</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Identity</label><div style="display:flex;gap:4px"><input id="userIdInput" placeholder="Your name..." style="flex:1;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:11px;outline:none;min-width:0"><button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:10px">Set</button></div><span id="userDisplay" class="stat" style="margin-top:2px;font-size:10px;color:var(--text3)">Not set</span></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Contributors <button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Narrate</button></label><div id="contributorList" class="stat">No contributors</div><div id="contributorChart" style="height:30px;margin:2px 0;display:none"></div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Leaderboard <button class="btn" id="impactNarrBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">🔊 Impact</button><button class="btn" id="storyBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:1px 6px">📖 Story</button></label><div id="leaderboardPanel" class="stat" style="font-size:9px;max-height:80px;overflow-y:auto">Loading...</div></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Sync</label><div id="syncStatus" class="stat">Checking...</div><button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:10px;margin-top:2px">🔄 Sync Now</button></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Conflict Stats</label><div id="conflictStats" class="stat">No data</div></div>
-    <div id="alertBanner" style="display:none;background:var(--red);color:var(--bg);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;margin-top:4px"></div>
-    <div><label style="display:block;margin-bottom:4px;font-size:11px">Hybrid LLM</label><div style="display:flex;gap:4px;align-items:center;margin:2px 0"><select id="hybridModeSelect" style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none"><option value="local">Local (Ollama)</option><option value="cloud">Cloud (OpenAI)</option></select><span id="hybridStatus" class="stat" style="font-size:9px">⏳</span></div><div id="hybridInfo" class="stat" style="font-size:9px;line-height:1.4">Set LLM_CLOUD_KEY env var for cloud mode</div></div>
+  <div style="display:flex;align-items:center;gap:4px;width:100%">
+    <span class="brand">youfeel</span>
+    <select id="persona"><option value="mentor">Mentor</option><option value="coach">Coach</option><option value="teacher">Teacher</option><option value="mentor:50+coach:30+teacher:20">Blended</option></select>
+    <button class="btn" id="voiceBtn" style="background:var(--surface3);color:var(--text);margin-left:auto">🎤</button>
   </div>
+  <div id="weights" style="width:100%;margin:2px 0"></div>
+  <div class="mini-metrics" id="miniMetrics"><span id="metricConf">—%</span><span id="metricLeader">—</span><span id="metricStatus">offline</span></div>
+  <div class="nav-tabs" id="navTabs">
+    <button class="tab-btn active" data-tab="chat">💬 Chat</button>
+    <button class="tab-btn" data-tab="story">📖 Story</button>
+    <button class="tab-btn" data-tab="drift">📊 Drift</button>
+    <button class="tab-btn" data-tab="leaderboard">🏆 Board</button>
+    <button class="tab-btn" data-tab="dashboard">📈 Dash</button>
+  </div>
+  <div id="llmBanner" class="llm-banner mock">Cloud AI offline — using mock replies</div>
+  <div style="display:flex;gap:4px;width:100%;margin-top:2px">
+    <input id="userIdInput" placeholder="Name..." style="flex:1;padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--surface3);background:var(--surface2);color:var(--text);font-size:10px;outline:none;min-width:0">
+    <button class="btn" id="setUserBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:2px 8px">Set</button>
+    <button class="btn" id="syncBtn" style="background:var(--surface3);color:var(--text);font-size:9px;padding:2px 8px">🔄</button>
+  </div>
+  <div id="userDisplay" style="font-size:9px;color:var(--text3);width:100%">Not set</div>
 </div>
 <div class="main">
-  <div class="msgs" id="msgs"></div>
-  <div class="input-bar">
-    <input id="input" placeholder="Type a message, or try 'set mentor 60 coach 25 teacher 15'..." autofocus>
-    <button class="btn" id="sendBtn" style="background:var(--blue);color:var(--bg)">Send</button>
+  <div class="tab-content active" id="tab-chat">
+    <div class="msgs" id="msgs"></div>
+    <div class="input-bar">
+      <input id="input" placeholder="Type a message, or try 'set mentor 60 coach 25 teacher 15'..." autofocus>
+      <button class="btn" id="sendBtn" style="background:var(--blue);color:var(--bg)">Send</button>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-story">
+    <div class="panel-scroll">
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button></div>
+      <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
+      <hr style="border-color:var(--surface3);margin:8px 0">
+      <div id="leaderboardPanel" class="stat" style="font-size:9px;min-height:30px">Leaderboard loading...</div>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-drift">
+    <div class="panel-scroll">
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="driftBtn" style="background:var(--blue);color:var(--bg);font-size:11px">⟳ Load</button><button class="btn" id="driftNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Narrate</button></div>
+      <canvas id="driftCanvas" style="display:none;width:100%;height:140px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
+      <div id="driftLegend" style="font-size:8px;color:var(--text3);display:flex;flex-wrap:wrap;gap:4px;margin:4px 0"></div>
+      <div id="driftInfluence" class="stat" style="font-size:9px;max-height:100px;overflow-y:auto">Load drift data</div>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-leaderboard">
+    <div class="panel-scroll">
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="impactNarrBtnLB" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Impact</button><button class="btn" id="narrateContribBtn" style="background:var(--surface3);color:var(--text);font-size:11px">👥 Contributors</button></div>
+      <div id="leaderboardPanelLB" class="stat" style="font-size:9px">Loading...</div>
+      <hr style="border-color:var(--surface3);margin:8px 0">
+      <div id="contributorList" class="stat" style="font-size:9px">No contributors</div>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-dashboard">
+    <div class="panel-scroll">
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="dashRefreshBtn" style="background:var(--blue);color:var(--bg);font-size:11px">⟳</button><button class="btn" id="dashNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Auto</button></div>
+      <div id="dashPanel" class="stat" style="font-size:9px;line-height:1.5">Loading...</div>
+      <canvas id="dashCanvas" style="display:none;width:100%;height:60px;margin:6px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
+      <hr style="border-color:var(--surface3);margin:8px 0">
+      <div style="display:flex;gap:4px;margin-bottom:4px"><button class="btn" id="driftBtnDash" style="background:var(--blue);color:var(--bg);font-size:10px">📊 Drift</button><button class="btn" id="covBtn" style="background:var(--surface3);color:var(--text);font-size:10px">📈 Coverage</button></div>
+      <canvas id="covCanvasDash" style="display:none;width:100%;height:80px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
+    </div>
   </div>
 </div>
 <script>
-const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={};
-const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),st=$('#stats'),h=$('#heatmap'),vb=$('#voiceBtn'),vs=$('#voiceStatus'),tc=$('#toggleCtrl'),cp=$('#controlsPanel'),ns=$('#syncStatus'),nb=$('#syncBtn'),nh=$('#narrateHeatBtn'),ab=$('#alertBanner'),rb=$('#reinforceBtn'),cs=$('#conflictStats'),ts=$('#trainingStats'),tl=$('#trainingList'),tn=$('#trainNarrBtn'),ctb=$('#clearTrainBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),cl=$('#contributorList'),sb=$('#simBtn'),sr=$('#simResults'),ss=$('#simBlendSelect'),sri=$('#simRounds'),abtn=$('#adaptiveBtn'),as_=$('#adaptiveStatus'),ah=$('#adaptiveHistory'),ncb=$('#narrateContribBtn'),fsb=$('#fedSimBtn'),esb=$('#escReinfBtn'),es=$('#escStatus');
+const API='/api';let persona='mentor',weights={},conv=[],listening=0,R=null,alertShown={},dashNarrate=0;
+const $=s=>document.querySelector(s),i=$('#input'),m=$('#msgs'),s=$('#sendBtn'),p=$('#persona'),w=$('#weights'),vb=$('#voiceBtn'),uid=$('#userIdInput'),sub=$('#setUserBtn'),ud=$('#userDisplay'),nb=$('#syncBtn');
 let userId=localStorage.getItem('youfeel_user')||'';
-
-tc.onclick=()=>{cp.classList.toggle('open');tc.textContent=cp.classList.contains('open')?'▲ Controls':'▼ Controls'};
 
 function headers(){
   const h={'Content-Type':'application/json'};
   if(userId)h['X-User-Id']=userId;
   return h
 }
-
 function updateUserDisplay(){
   if(userId){ud.innerHTML='<span style="color:var(--green)">\u25CF</span> '+userId;uid.value=userId}
   else ud.innerHTML='<span style="color:var(--red)">\u25CF</span> Not set'
@@ -117,7 +155,7 @@ function add(r,t,meta){
   if(meta){const m2=document.createElement('div');m2.className='meta';m2.textContent=meta;d.appendChild(m2)}
   m.appendChild(d);m.scrollTop=m.scrollHeight
 }
-function addControl(t){add('control','⚙️ '+t)}
+function addControl(t){add('control','\u2699\uFE0F '+t)}
 function speakText(text,emotion){
   if(!('speechSynthesis' in window))return;
   const u=new SpeechSynthesisUtterance(text);
@@ -159,94 +197,9 @@ function updateW(){
   names.forEach((n,j)=>{
     const v=vals[j]||0,c=cs[n]||'#89b4fa';
     const r2=document.createElement('div');r2.style.cssText='display:flex;align-items:center;gap:6px;margin:2px 0';
-    r2.innerHTML='<span style="font-size:11px;min-width:52px;color:var(--text2)">'+n+'</span><div class="wbar" style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;flex:1"><div style="height:100%;border-radius:3px;transition:width .3s;width:'+v+'%;background:'+c+'"></div></div><span style="font-size:10px;min-width:26px;color:var(--text2)">'+v+'</span>';
+    r2.innerHTML='<span style="font-size:10px;min-width:44px;color:var(--text2)">'+n+'</span><div class="wbar" style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;flex:1"><div style="height:100%;border-radius:2px;transition:width .3s;width:'+v+'%;background:'+c+'"></div></div><span style="font-size:9px;min-width:22px;color:var(--text2)">'+v+'</span>';
     w.appendChild(r2)
   })
-}
-
-async function refreshTraining(){
-  try{
-    const r=await fetch(API+'/training-history');const d=await r.json();
-    ts.innerHTML='Weak: <b>'+d.weak_count+'</b> \u22c5 Reinforce: <b>'+d.reinforce_count+'</b> \u22c5 Total: <b>'+d.total_events+'</b>';
-    tl.innerHTML=d.recent.slice(-5).reverse().map(e=>{
-      const t=new Date(e.timestamp).toLocaleTimeString();
-      if(e.type==='weak_reply') return '<span style="color:var(--red)">\u26A0</span> weak <b>'+e.score+'</b> ('+e.intent+') \u22c5 '+t;
-      if(e.type==='reinforce') return '<span style="color:var(--yellow)">\u26A1</span> reinforce <b>'+e.intent+'</b> \u22c5 '+t;
-      return ''
-    }).join('<br>')
-  }catch(e){ts.innerHTML='Offline'}
-}
-
-async function narrateTraining(){
-  try{
-    const r=await fetch(API+'/training-narration');const d=await r.json();
-    addControl('Training: '+d.narration);
-    speakText(d.narration,'reflection')
-  }catch(e){}
-}
-
-async function narrateContributors(){
-  try{
-    const r=await fetch(API+'/contributor-narration');const d=await r.json();
-    addControl('Contributors: '+d.narration);
-    speakText(d.narration,'encouragement')
-  }catch(e){}
-}
-
-ncb.onclick=narrateContributors;
-
-const CONTRIB_COLORS=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7'];
-
-async function refreshContributors(){
-  try{
-    const r=await fetch(API+'/contributor-analytics');const d=await r.json();
-    if(!d.analytics.length){cl.innerHTML='No contributors';return}
-    const cc=$('#contributorChart');
-    cl.innerHTML=d.analytics.map((u,i)=>{
-      const c=CONTRIB_COLORS[i%CONTRIB_COLORS.length];
-      const isMe=u.user_id===userId;
-      return '<span style="color:'+(isMe?'var(--blue)':'var(--text2)')+'">'+(u.last_sync?'\u25CF ':'\u25CB ')+'<b>'+u.user_id+'</b></span> sync:'+u.sync_count+' \u2694\uFE0F:'+u.conflict_count+' \u26A0:'+u.weak_replies+' \u2B50:'+u.gold_exports
-    }).join(' &middot; ');
-    const maxVal=Math.max(...d.analytics.map(u=>Math.max(u.conflict_count,u.weak_replies,u.gold_exports,u.sync_count)),1);
-    cc.style.display='block';
-    const barH=Math.min(d.analytics.length*12,60);
-    cc.style.height=barH+'px';
-    cc.innerHTML='<div style="display:flex;gap:8px;height:100%;align-items:flex-end">'+d.analytics.map((u,i)=>{
-      const c=CONTRIB_COLORS[i%CONTRIB_COLORS.length];
-      const label=u.user_id.length>6?u.user_id.substr(0,5)+'\u2026':u.user_id;
-      const h=Math.round((u.sync_count/maxVal)*100);
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end"><div title="'+u.user_id+': '+u.sync_count+' syncs, '+u.conflict_count+' conflicts, '+u.weak_replies+' weak, '+u.gold_exports+' gold" style="width:100%;background:'+c+';height:'+h+'%;min-height:4px;border-radius:2px 2px 0 0;opacity:'+(u.user_id===userId?'1':'0.6')+'"></div><span style="font-size:7px;color:var(--text3);margin-top:1px">'+label+'</span></div>'
-    }).join('')+'</div>'
-  }catch(e){cl.innerHTML='Offline'}
-}
-
-async function refreshStats(){
-  try{
-    const [r2,r3,r4,r5]=await Promise.all([
-      fetch(API+'/dashboard'),
-      fetch(API+'/sync-status'),
-      fetch(API+'/weak-alert'),
-      fetch(API+'/conflict-stats')
-    ]);
-    const d=await r2.json();st.innerHTML='Avg: <b>'+(d.avg_confidence||'N/A')+'</b> \u22c5 Recent: ['+d.recent_scores.slice(-5).join(',')+']';
-    const ds=await r3.json();
-    ns.innerHTML='<span style="color:'+(ds.last_sync==='synced'?'var(--green)':'var(--red)')+'">\u25CF</span> '+ds.last_sync+(ds.last_sync_time?' \u22c5 '+new Date(ds.last_sync_time).toLocaleTimeString():'');
-    if(ds.contributors)refreshContributors();
-    const da=await r4.json();
-    if(da.alert&&!alertShown.weak){ab.style.display='block';ab.textContent=da.message;alertShown.weak=1;speakText('Alert: '+da.message,'empathy');setTimeout(()=>{ab.style.display='none'},8000)};
-    const dc=await r5.json();
-    if(dc.total){cs.innerHTML='Total: <b>'+dc.total+'</b> \u22c5 auto: '+dc.auto+' \u22c5 gui: '+dc.gui+' \u22c5 voice: '+dc.voice+' \u22c5 manual: '+dc.manual+(dc.by_user?' \u22c5 <span style="color:var(--text3)">users: '+Object.keys(dc.by_user).join(', ')+'</span>':'')}
-    const hs=await fetch(API+'/hybrid-status');const hd=await hs.json();
-    if(hd.offline&&hd.mode==='cloud'){ab.style.display='block';ab.textContent='⚠️ Cloud LLM offline \u2014 using mock replies';ab.style.background='var(--yellow)';ab.style.color='var(--bg)'}else if(ab.textContent.includes('Cloud')){ab.style.display='none'}
-    await refreshTraining()
-  }catch(e){st.textContent='Offline'}
-}
-
-async function updateHeatmap(){
-  try{
-    const intents=['motivate','explain','advise','general'];const tiers=[1,2,3];
-    h.innerHTML='<div style="display:grid;grid-template-columns:70px repeat(3,1fr);gap:2px;font-size:10px"><div></div><div style="text-align:center;color:var(--text3)">T1</div><div style="text-align:center;color:var(--text3)">T2</div><div style="text-align:center;color:var(--text3)">T3</div>'+intents.map(i=>'<div style="color:var(--text2)">'+i+'</div>'+tiers.map(t=>'<div style="background:var(--surface3);padding:3px;text-align:center;border-radius:3px;color:var(--text3)">0</div>').join('')).join('')+'</div>'
-  }catch(e){}
 }
 
 function cue(tier,intent){
@@ -262,7 +215,6 @@ function cue(tier,intent){
 }
 
 p.onchange=()=>{persona=p.value};
-
 s.onclick=()=>{
   const t=i.value.trim();
   if(!t)return;i.value='';
@@ -275,9 +227,6 @@ s.onclick=()=>{
 };
 i.onkeydown=e=>{if(e.key==='Enter')s.click()};
 
-tn.onclick=narrateTraining;
-ctb.onclick=()=>{ts.innerHTML='Cleared';fetch(API+'/reset-training',{method:'POST'}).catch(()=>{})};
-
 nb.onclick=async()=>{
   if(!userId){
     const n=prompt('Enter your name for sync identity:');
@@ -285,160 +234,17 @@ nb.onclick=async()=>{
   }
   try{
     const r2=await fetch(API+'/sync',{method:'POST',headers:headers()});const d=await r2.json();
-    ns.innerHTML='<span style="color:var(--green)">\u25CF</span> synced \u22c5 '+new Date(d.synced_at).toLocaleTimeString();
     const dc=d.dataset_changes||{};
-    const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses logged, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'. '+(dc.fewshot_entries_added?' '+dc.fewshot_entries_added+' new few-shot entries.':'')+(dc.conflicts_resolved?' '+dc.conflicts_resolved+' conflicts resolved.':'')+(dc.gold_exports?' '+dc.gold_exports+' gold exports.':'');
+    const nar='Sync for '+d.user_id+': sync number '+d.sync_count+', '+d.total_scores+' responses, '+d.weak_count+' weak, average confidence '+d.avg_confidence+'.';
     speakText(nar,'encouragement');
     const balMsg=(d.balance_applied?' \u2699 balance adjusted':'')+(d.rollback_applied?' \u21BA rollback: '+d.rollback_reason:'');
-    addControl('Sync for '+d.user_id+' \u2116'+d.sync_count+': '+d.total_scores+' resp, '+d.weak_count+' weak, avg '+d.avg_confidence+(dc.fewshot_entries_added?' \u2022 +'+dc.fewshot_entries_added+' fewshot':'')+(dc.conflicts_resolved?' \u2022 \u2694\uFE0Fx'+dc.conflicts_resolved:'')+(dc.gold_exports?' \u2022 \u2B50x'+dc.gold_exports:'')+balMsg);
-    await narrateTraining();await narrateContributors();await refreshContributors()
-  }catch(e){ns.innerHTML='<span style="color:var(--red)">\u25CF</span> sync failed'}
-};
-
-nh.onclick=async()=>{
-  try{const r2=await fetch(API+'/heatmap-narration');const d=await r2.json();addControl('Narrated: '+d.narration);speakText(d.narration,'challenge')}catch(e){}
-};
-
-rb.onclick=async()=>{
-  try{const r2=await fetch(API+'/reinforce');const d=await r2.json();const balMsg=(d.balance_applied?' \u2699 balance adjusted':'')+(d.rollback_applied?' \u21BA '+d.rollback_reason:'');addControl(d.message+balMsg);speakText(d.message,'challenge')}catch(e){}
-};
-
-const SIM_COLORS=['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7'];
-
-function drawSimChart(canvas, results, rounds){
-  const ctx=canvas.getContext('2d');
-  const W=canvas.parentElement.clientWidth-4||260,H=140;
-  canvas.width=W*2;canvas.height=H*2;
-  canvas.style.width=W+'px';canvas.style.height=H+'px';
-  ctx.scale(2,2);
-  const pad={t:16,b:16,l:32,r:12};
-  const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='var(--text3)';ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='8px sans-serif';
-  for(let i=0;i<=4;i++){
-    const y=pad.t+ch-(i/4*ch),v=Math.round(100-i*25);
-    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
-    ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v+'%',pad.l-4,y+3)
-  }
-  ctx.fillStyle='var(--text3)';ctx.textAlign='center';
-  for(let i=0;i<rounds&&i<20;i++){
-    const x=pad.l+(i/(Math.min(rounds,20)-1||1))*cw;
-    if(i%2===0){ctx.fillText(i+1,x,pad.t+ch+10)}
-  }
-  results.forEach((res,bi)=>{
-    const rd=res.rounds_data||[];
-    const step=rd.length>1?cw/(rd.length-1):0;
-    ctx.beginPath();ctx.strokeStyle=SIM_COLORS[bi%SIM_COLORS.length];ctx.lineWidth=1.5;
-    rd.forEach((r,i)=>{
-      const x=pad.l+i*step,y=pad.t+ch-(r.score/100*ch);
-      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
-    });
-    ctx.stroke();
-    rd.forEach((r,i)=>{
-      const x=pad.l+i*step,y=pad.t+ch-(r.score/100*ch);
-      if(r.escalated){
-        ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
-        ctx.fillStyle='var(--red)';ctx.fill()
-      }else{
-        ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);
-        ctx.fillStyle=SIM_COLORS[bi%SIM_COLORS.length];ctx.fill()
-      }
-    })
-  });
-  ctx.fillStyle='var(--text3)';ctx.font='8px sans-serif';ctx.textAlign='left';
-  results.forEach((res,bi)=>{
-    const x=pad.l+bi*52,y=pad.t-4;
-    ctx.fillStyle=SIM_COLORS[bi%SIM_COLORS.length];
-    ctx.fillRect(x,y-2,6,6);
-    ctx.fillStyle='var(--text3)';ctx.fillText(res.name.substr(0,8),x+8,y+2)
-  });
-  canvas.style.display='block'
-}
-
-sb.onclick=async()=>{
-  const rounds=parseInt(sri.value)||10;
-  const blendVal=ss.value;
-  const blends=blendVal==='all'?null:[{name:ss.options[ss.selectedIndex].text,persona:blendVal,weights:parseBlendWeights(blendVal)}];
-  const canvas=$('#simCanvas');
-  canvas.style.display='none';
-  sr.innerHTML='Running simulation <span style="color:var(--yellow)">\u25CF</span>';
-  addControl('Simulation started: '+rounds+' rounds x '+(blends?1:5)+' blends');
-  try{
-    const r=await fetch(API+'/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds,blends})});
-    const d=await r.json();
-    drawSimChart(canvas,d.results,rounds);
-    let html='<div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:2px 6px;font-size:10px;margin-top:4px">';
-    html+='<b>Blend</b><b style="text-align:right">Avg</b><b style="text-align:right">Esc</b><b style="text-align:right">Weak%</b><b style="text-align:right">Intent</b>';
-    d.results.forEach(res=>{
-      html+='<span>'+res.name+'</span>';
-      html+='<span style="text-align:right;color:'+(res.avg_confidence>=70?'var(--green)':res.avg_confidence>=50?'var(--yellow)':'var(--red)')+'">'+res.avg_confidence+'%</span>';
-      html+='<span style="text-align:right">'+res.escalations+'</span>';
-      html+='<span style="text-align:right;color:'+(parseFloat(res.weak_ratio)<20?'var(--green)':parseFloat(res.weak_ratio)<40?'var(--yellow)':'var(--red)')+'">'+res.weak_ratio+'</span>';
-      html+='<span style="text-align:right;color:var(--text2)">'+res.best_intent+'</span>'
-    });
-    html+='</div><div style="font-size:9px;color:var(--text3);margin-top:2px">'+d.total_prompts+' total prompts &bull; red dots = escalation</div>';
-    sr.innerHTML=html;
-    addControl('Simulation done: '+d.total_prompts+' prompts across '+(blends?1:5)+' blends')
-  }catch(e){sr.innerHTML='Error: '+e.message}
-};
-
-fsb.onclick=async()=>{
-  const rounds=parseInt(sri.value)||10;
-  sr.innerHTML='Running federated simulation <span style="color:var(--yellow)">\u25CF</span>';
-  addControl('Federated sim started: '+rounds+' rounds per user');
-  try{
-    const r=await fetch(API+'/federated-simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds})});
-    const d=await r.json();
-    if(!d.results.length){sr.innerHTML='No contributors found';return}
-    let html='<div style="font-size:10px;margin:2px 0">';
-    if(d.ranked){html+='<b>Rankings</b><div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:2px 4px;font-size:9px">';
-    html+='<span>#</span><b>User</b><b style="text-align:right">Avg</b><b style="text-align:right">Esc</b><b style="text-align:right">Weak%</b>';
-    d.ranked.forEach(r3=>{
-      html+='<span style="color:'+(r3.rank===1?'var(--yellow)':'var(--text3)')+'">#'+r3.rank+'</span>';
-      html+='<span style="color:'+(r3.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r3.user_id.length>8?r3.user_id.substr(0,7)+'\u2026':r3.user_id)+'</span>';
-      html+='<span style="text-align:right;color:'+(r3.avg_confidence>=70?'var(--green)':r3.avg_confidence>=50?'var(--yellow)':'var(--red)')+'">'+r3.avg_confidence+'%</span>';
-      html+='<span style="text-align:right">'+r3.escalations+'</span>';
-      html+='<span style="text-align:right;color:'+(parseFloat(r3.weak_ratio)<20?'var(--green)':parseFloat(r3.weak_ratio)<40?'var(--yellow)':'var(--red)')+'">'+r3.weak_ratio+'</span>'
-    });
-    html+='</div></div>'}
-    html+='<div style="font-size:9px;color:var(--text3);margin-top:2px">'+d.total_users+' users &bull; '+rounds+' rounds each &bull; avg '+d.fed_avg+'%</div>';
-    html+='<div style="max-height:80px;overflow-y:auto;margin-top:4px;font-size:8px;color:var(--text3)">';
-    d.results.forEach(r2=>{
-      const escRate=r2.sim_escalation_rate||0;
-      const escBar=Math.min(escRate/2,20);
-      html+='<span style="color:'+(r2.user_id===userId?'var(--blue)':'var(--text2)')+'">'+(r2.custom_weights?'\u2699 ':'\u25CB ')+r2.user_id+': '+r2.sim_avg_confidence+'% esc:'+r2.sim_escalations+'('+escRate+'%) weak:'+r2.sim_weak_ratio+(r2.blend_scores?' ['+r2.blend_scores.map(bs=>bs.blend.substr(0,6)+':'+bs.avg+'%').join(' ')+']':'')+'</span><div style="height:3px;width:100%;background:var(--surface3);border-radius:2px;margin:1px 0"><div style="height:100%;width:'+escBar+'%;background:var(--red);border-radius:2px"></div></div>'
-    });
-    html+='</div>';
-    sr.innerHTML=html;addControl('Fed sim: '+d.total_users+' users, '+d.rounds+' rounds, avg '+d.fed_avg+'%')
-  }catch(e){sr.innerHTML='Error: '+e.message}
-};
-
-$('#fedSimNarrBtn').onclick=async()=>{
-  const rounds=parseInt(sri.value)||8;
-  try{const r=await fetch(API+'/federated-sim-narration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rounds})});const d=await r.json();addControl('Fed sim narration: '+d.narration);speakText(d.narration,d.emotion||'reflection')}catch(e){}
-};
-
-async function refreshEscalationStatus(){
-  try{
-    const r=await fetch(API+'/escalation-status');const d=await r.json();
-    es.innerHTML='Events: <b>'+d.total_events+'</b> &bull; Patterns: <b>'+d.patterns.length+'</b> &bull; Reinforced: <b>'+d.reinforced_count+'</b>'
-  }catch(e){es.innerHTML='Offline'}
-}
-
-esb.onclick=async()=>{
-  esb.disabled=1;esb.textContent='Analyzing...';
-  try{
-    const r=await fetch(API+'/escalation-reinforce',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const d=await r.json();
-    const balMsg=(d.balance_applied?' \u2699 balance adjusted':'')+(d.rollback_applied?' \u21BA '+d.rollback_reason:'');
-    addControl(d.messages.join(' ')+balMsg);
-    await refreshEscalationStatus()
-  }catch(e){es.innerHTML='Error: '+e.message}
-  esb.disabled=0;esb.textContent='\uD83D\uDD01 Reinforce Patterns'
+    addControl('Sync #'+d.sync_count+': '+d.total_scores+' resp, avg '+d.avg_confidence+(dc.fewshot_entries_added?' +'+dc.fewshot_entries_added+' fewshot':'')+(dc.conflicts_resolved?' x'+dc.conflicts_resolved+' conflict':'')+(dc.gold_exports?' x'+dc.gold_exports+' gold':'')+balMsg);
+    await refreshMetrics();updateMiniMetrics()
+  }catch(e){addControl('Sync failed')}
 };
 
 const DRIFT_COLORS={sync:'#89b4fa',conflict_resolve:'#f38ba8',weak_reply:'#f9e2af',gold_export:'#f5c2e7',simulate:'#a6e3a1',federated_simulate:'#cba6f7'};
-const DRIFT_LABELS={sync:'Sync',conflict_resolve:'Conflict',weak_reply:'Weak',gold_export:'Gold',simulate:'Sim',federated_simulate:'Fed Sim'};
+const DRIFT_LABELS={sync:'Sync',conflict_resolve:'Conflict',weak_reply:'Weak',gold_export:'Gold',simulate:'Sim',fed_sim:'Fed Sim'};
 
 async function loadDrift(){
   const canvas=$('#driftCanvas'),legend=$('#driftLegend'),inf=$('#driftInfluence');
@@ -452,17 +258,20 @@ async function loadDrift(){
     if(infArr.length){
       inf.innerHTML=infArr.map(([uid,infData])=>{
         const driftStr=Object.keys(infData.weight_drift||{}).length?' ['+Object.entries(infData.weight_drift).map(([k,v])=>k+': '+(v>0?'+':'')+v).join(', ')+']':'';
-        return '<span style="color:'+(uid===userId?'var(--blue)':'var(--text2)')+'"><b>'+uid+'</b></span> '+infData.events+' ev'+(infData.last_action?' \u22c5 last: '+DRIFT_LABELS[infData.last_action]||infData.last_action:'')+driftStr
+        return '<span style="color:'+(uid===userId?'var(--blue)':'var(--text2)')+'"><b>'+uid+'</b></span> '+infData.events+' ev'+(infData.last_action?' \u22c5 last: '+(DRIFT_LABELS[infData.last_action]||infData.last_action):'')+driftStr
       }).join('<br>')
-    }else{
-      inf.innerHTML='No contributor influence data yet.'
-    }
+    }else{inf.innerHTML='No contributor influence data yet.'}
   }catch(e){inf.innerHTML='Error: '+e.message}
 }
+$('#driftBtn').onclick=loadDrift;
+$('#driftBtnDash').onclick=()=>{switchTab('drift');loadDrift()};
+$('#driftNarrBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/drift-narration');const d=await r.json();addControl('Drift: '+d.narration);speakText(d.narration,'reflection')}catch(e){}
+};
 
 function drawDriftChart(canvas,d){
   const ctx=canvas.getContext('2d');
-  const W=canvas.parentElement.clientWidth-4||260,H=120;
+  const W=canvas.parentElement.clientWidth-4||260,H=140;
   canvas.width=W*2;canvas.height=H*2;
   canvas.style.width=W+'px';canvas.style.height=H+'px';
   canvas.style.display='block';
@@ -485,10 +294,7 @@ function drawDriftChart(canvas,d){
       const x=pad.l+(i/(simTrend.length-1||1))*cw;
       const y=pad.t+ch-((pt.value||50)/100*ch);
       i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
-    });
-    ctx.stroke()
-  }
-  if(simTrend.length>1){
+    });ctx.stroke();
     simTrend.forEach((pt,i)=>{
       const x=pad.l+(i/(simTrend.length-1||1))*cw;
       const y=pad.t+ch-((pt.value||50)/100*ch);
@@ -503,9 +309,7 @@ function drawDriftChart(canvas,d){
       const clr=DRIFT_COLORS[ev.action]||'var(--text3)';
       ctx.fillStyle=clr;
       if(ev.action==='conflict_resolve'){
-        ctx.beginPath();
-        ctx.moveTo(x,y-4);ctx.lineTo(x+3,y);ctx.lineTo(x,y+4);ctx.lineTo(x-3,y);ctx.closePath();
-        ctx.fill()
+        ctx.beginPath();ctx.moveTo(x,y-4);ctx.lineTo(x+3,y);ctx.lineTo(x,y+4);ctx.lineTo(x-3,y);ctx.closePath();ctx.fill()
       }else if(ev.action==='weak_reply'){
         ctx.beginPath();ctx.moveTo(x,y-4);ctx.lineTo(x+3,y+2);ctx.lineTo(x-3,y+2);ctx.closePath();ctx.fill()
       }else if(ev.action==='gold_export'){
@@ -516,16 +320,8 @@ function drawDriftChart(canvas,d){
     })
   }
   ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='7px sans-serif';
-  if(simTrend.length>1){
-    ctx.fillText('Time \u2192',pad.l+cw/2,pad.t+ch+16)
-  }
-  canvas.style.display='block'
+  if(simTrend.length>1)ctx.fillText('Time \u2192',pad.l+cw/2,pad.t+ch+16)
 }
-
-$('#driftBtn').onclick=loadDrift;
-$('#driftNarrBtn').onclick=async()=>{
-  try{const r=await fetch(API+'/drift-narration');const d=await r.json();addControl('Drift: '+d.narration);speakText(d.narration,'reflection')}catch(e){}
-};
 
 let dashNarrate=0;
 async function refreshDashboard(){
@@ -537,16 +333,15 @@ async function refreshDashboard(){
     ]);
     const dd=await rd.json(),dh=await rh.json(),dlb=await rlb.json(),dch=await rch.json();
     const avg=dd.avg_confidence||'N/A',low=dd.consecutive_low||0;
-    const top=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].user_id:'—';
+    const top=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].user_id:'\u2014';
     const fshot=dch.total_fewshot||0,esc=dch.total_escalations||0;
     const mode=dh.mode||'offline';
-    const topScore=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].score:'—';
+    const topScore=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].score:'\u2014';
     const online=dh.has_api_key||mode==='local';
     if(dashNarrate&&avg!=='N/A'){
       const escRising=esc>=5,lowMany=low>=3,confHigh=avg>=75;
       const dashEmotion=escRising?'empathy':confHigh?'joy':lowMany?'challenge':fshot>=10?'encouragement':'reflection';
-      const nar='Dashboard: average confidence '+avg+' percent, '+low+' consecutive low scores, '+fshot+' few-shot examples, '+esc+' escalations, leader is '+top+' with '+topScore+' points. '+(online?'System is online.':'Using mock replies.');
-      speakText(nar,dashEmotion,true)
+      speakText('Dashboard: average confidence '+avg+' percent, '+low+' consecutive low, '+fshot+' few-shot, '+esc+' escalations.',dashEmotion,true)
     }
     panel.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 6px;font-size:9px">'+
       '<span>Avg conf</span><span style="text-align:right;color:'+(avg>=70?'var(--green)':avg>=50?'var(--yellow)':'var(--red)')+'"><b>'+avg+'%</b></span>'+
@@ -560,12 +355,9 @@ async function refreshDashboard(){
     if(ch.length>=2){
       const ctx=canvas.getContext('2d');
       const W=canvas.parentElement.clientWidth-4||220,H=60;
-      canvas.width=W*2;canvas.height=H*2;
-      canvas.style.width=W+'px';canvas.style.height=H+'px';
-      canvas.style.display='block';
+      canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';canvas.style.display='block';
       ctx.scale(2,2);
-      const pad2={t:8,b:10,l:20,r:6};
-      const cw2=W-pad2.l-pad2.r,ch2=H-pad2.t-pad2.b;
+      const pad2={t:8,b:10,l:20,r:6},cw2=W-pad2.l-pad2.r,ch2=H-pad2.t-pad2.b;
       ctx.clearRect(0,0,W,H);
       const maxV=Math.max(...ch.map(h=>Math.max(h.total_fewshot||0,h.escalation_count||0)),5);
       ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='5px sans-serif';
@@ -581,34 +373,20 @@ async function refreshDashboard(){
     }else{canvas.style.display='none'}
   }catch(e){panel.innerHTML='Unavailable'}
 }
-
-$('#dashBtn').onclick=refreshDashboard;
+$('#dashRefreshBtn').onclick=refreshDashboard;
 $('#dashNarrBtn').onclick=()=>{dashNarrate=!dashNarrate;$('#dashNarrBtn').style.background=dashNarrate?'var(--green)':'var(--surface3)';$('#dashNarrBtn').textContent=dashNarrate?'\uD83D\uDD0A On':'🔊 Auto';if(dashNarrate)refreshDashboard()};
-
-function parseBlendWeights(val){
-  const w={};val.split('+').forEach(p=>{const[m,n]=p.split(':');if(m&&n)w[m]=parseInt(n)});return w
-}
-
-async function refreshAdaptive(){
-  try{
-    const r=await fetch(API+'/adaptive-status');const d=await r.json();
-    const escStr=d.escalation_intent_counts?Object.entries(d.escalation_intent_counts).map(([k,v])=>k+':'+v).join(', '):'none';
-    as_.innerHTML='Few-shot: <b>'+d.total_fewshot+'</b> &bull; Intents: <b>'+(d.intents_covered.join(', ')||'none')+'</b> &bull; Esc intents: <span style="color:var(--red)">'+escStr+'</span>';
-    ah.innerHTML=d.history.slice(-3).reverse().map(e=>'<span style="color:var(--yellow)">\u26A1</span> '+(e.type||'auto')+' <b>'+e.intent+'</b> ('+((e.weak_rate||'')+' '+(e.escalation_count||'')).trim()+(e.pattern?' pat:'+e.pattern:'')+') &bull; '+new Date(e.generated_at).toLocaleTimeString()).join('<br>');
-    drawCovChart($('#covCanvas'),d.coverage_history)
-  }catch(e){as_.innerHTML='Offline'}
-}
+$('#covBtn').onclick=async()=>{
+  const c=$('#covCanvasDash');
+  try{const r=await fetch(API+'/coverage-history');const d=await r.json();drawCovChart(c,d.coverage_history)}catch(e){}
+};
 
 function drawCovChart(canvas, history){
   if(!history||history.length<2){canvas.style.display='none';return}
   const ctx=canvas.getContext('2d');
   const W=canvas.parentElement.clientWidth-4||220,H=80;
-  canvas.width=W*2;canvas.height=H*2;
-  canvas.style.width=W+'px';canvas.style.height=H+'px';
-  canvas.style.display='block';
+  canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';canvas.style.display='block';
   ctx.scale(2,2);
-  const pad={t:10,b:16,l:24,r:8};
-  const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+  const pad={t:10,b:16,l:24,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
   ctx.clearRect(0,0,W,H);
   ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
   const maxVal=Math.max(...history.map(h=>Math.max(h.total_fewshot||0,h.escalation_count||0,h.weak_intent_count||0)),5);
@@ -618,68 +396,17 @@ function drawCovChart(canvas, history){
     ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y+2)
   }
   ctx.beginPath();ctx.strokeStyle='var(--green)';ctx.lineWidth=1.2;
-  history.forEach((pt,i)=>{
-    const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-((pt.total_fewshot||0)/maxVal*ch);
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
-  });ctx.stroke();
-  history.forEach((pt,i)=>{
-    const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-((pt.total_fewshot||0)/maxVal*ch);
-    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
-    ctx.fillStyle='var(--green)';ctx.fill()
-  });
+  history.forEach((pt,i)=>{const x=pad.l+(i/(history.length-1))*cw,y=pad.t+ch-((pt.total_fewshot||0)/maxVal*ch);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});ctx.stroke();
   ctx.beginPath();ctx.strokeStyle='var(--red)';ctx.lineWidth=1.2;ctx.setLineDash([3,2]);
-  history.forEach((pt,i)=>{
-    const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-((pt.escalation_count||0)/maxVal*ch);
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
-  });ctx.stroke();ctx.setLineDash([]);
-  history.forEach((pt,i)=>{
-    const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-((pt.escalation_count||0)/maxVal*ch);
-    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
-    ctx.fillStyle='var(--red)';ctx.fill()
-  });
-  ctx.beginPath();ctx.strokeStyle='var(--yellow)';ctx.lineWidth=1.2;ctx.setLineDash([2,3]);
-  history.forEach((pt,i)=>{
-    const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-((pt.weak_intent_count||0)/maxVal*ch);
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
-  });ctx.stroke();ctx.setLineDash([]);
-  history.forEach((pt,i)=>{
-    const x=pad.l+(i/(history.length-1))*cw;
-    const y=pad.t+ch-((pt.weak_intent_count||0)/maxVal*ch);
-    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
-    ctx.fillStyle='var(--yellow)';ctx.fill()
-  });
-  ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.font='6px sans-serif';
-  ctx.fillStyle='var(--green)';ctx.fillRect(pad.l,pad.t-6,6,4);ctx.fillStyle='var(--text3)';ctx.fillText('few-shot',pad.l+8,pad.t-2);
-  ctx.fillStyle='var(--red)';ctx.fillRect(pad.l+42,pad.t-6,6,4);ctx.fillStyle='var(--text3)';ctx.fillText('esc',pad.l+50,pad.t-2);
-  ctx.fillStyle='var(--yellow)';ctx.fillRect(pad.l+66,pad.t-6,6,4);ctx.fillStyle='var(--text3)';ctx.fillText('weak',pad.l+74,pad.t-2);
-  ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
-  ctx.fillText('coverage over time',pad.l+cw/2,pad.t+ch+14);
+  history.forEach((pt,i)=>{const x=pad.l+(i/(history.length-1))*cw,y=pad.t+ch-((pt.escalation_count||0)/maxVal*ch);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});ctx.stroke();ctx.setLineDash([])
 }
 
-abtn.onclick=async()=>{
-  abtn.disabled=1;abtn.textContent='Running...';
-  as_.innerHTML='<span style="color:var(--yellow)">\u25CF</span> Running simulation...';
-  try{
-    const r=await fetch(API+'/adaptive-reinforce',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const d=await r.json();
-    if(d.reinforced>0){addControl('Adaptive: '+d.messages.join(' '));speakText(d.messages.join(' '),'challenge')}
-    else addControl('Adaptive: all intents already reinforced');
-    await refreshAdaptive()
-  }catch(e){as_.innerHTML='Error: '+e.message}
-  abtn.disabled=0;abtn.textContent='\u26A1 Auto-Reinforce'
-};
-
-async function refreshLeaderboard(){
+async function refreshLeaderboard(panelId){
+  const panel=$(panelId||'#leaderboardPanel');
   try{
     const r=await fetch(API+'/leaderboard');const d=await r.json();
-    const lb=$('#leaderboardPanel');
-    if(!d.leaderboard||!d.leaderboard.length){lb.innerHTML='No contributors yet';return}
-    lb.innerHTML='<div style="display:grid;grid-template-columns:18px 1fr 22px;gap:1px 4px;font-size:9px">'+
+    if(!d.leaderboard||!d.leaderboard.length){panel.innerHTML='No contributors yet';return}
+    panel.innerHTML='<div style="display:grid;grid-template-columns:18px 1fr 22px;gap:1px 4px;font-size:9px">'+
       d.leaderboard.slice(0,10).map(e=>{
         const b=e.badges&&e.badges.length?e.badges.join(' '):'';
         const isMe=e.user_id===userId;
@@ -689,87 +416,89 @@ async function refreshLeaderboard(){
           '<div style="grid-column:1/-1;margin:-1px 0 -1px 18px;font-size:7px;color:var(--text3);line-height:1.2">'+(b?'<span style="font-size:9px">'+b+'</span> ':'')+
           'S:'+e.syncs+' G:'+e.gold_exports+' W:'+e.weak_replies+' C:'+e.conflicts+'</div>'
       }).join('')+'</div>'
+  }catch(e){panel.innerHTML='Offline'}
+}
+
+async function refreshMetrics(){
+  try{
+    const [rd,rh,rlb]=await Promise.all([
+      fetch(API+'/dashboard'),fetch(API+'/health'),fetch(API+'/leaderboard')
+    ]);
+    const dd=await rd.json(),dh=await rh.json(),dlb=await rlb.json();
+    const avg=dd.avg_confidence||'N/A';
+    const top=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].user_id:'\u2014';
+    const mode=dh.mode||'offline';
+    const online=dh.has_api_key||mode==='local';
+    $('#metricConf').textContent=avg+'%';
+    $('#metricLeader').textContent=top.length>8?top.substr(0,7)+'\u2026':top;
+    $('#metricStatus').textContent=online?'online':'offline';
+    $('#metricStatus').style.color=online?'var(--green)':'var(--red)';
+    const banner=$('#llmBanner');
+    if(!online&&mode==='cloud'){banner.textContent='\u26A0\uFE0F Cloud AI offline \u2014 using mock replies';banner.className='llm-banner offline'}
+    else{banner.textContent='\u2705 '+(mode==='cloud'?'Cloud AI':'Local AI')+' online';banner.className='llm-banner online'}
+    await refreshLeaderboard('#leaderboardPanel');await refreshLeaderboard('#leaderboardPanelLB')
   }catch(e){}
 }
 
-$('#impactNarrBtn').onclick=async()=>{
+async function checkBadgeAlerts(){
+  try{
+    const r=await fetch(API+'/badge-alerts');const d=await r.json();
+    if(d.alerts&&d.alerts.length){addControl(d.narration);speakText(d.narration,'joy')}
+  }catch(e){}
+}
+
+$('#storyBtnTab').onclick=async()=>{
+  try{const r=await fetch(API+'/unified-story');const d=await r.json();$('#storyPanel').innerHTML=d.chapters.map((c,i)=>'<div style="margin:2px 0;line-height:1.4">'+(i+1)+'. '+c+'</div>').join('');addControl('Story: '+d.narration);speakText(d.narration,d.emotion||'reflection')}catch(e){}
+};
+$('#impactNarrBtnTab').onclick=async()=>{
   try{const r=await fetch(API+'/contributor-impact');const d=await r.json();addControl('Impact: '+d.narration);const hasChanges=d.changes&&(d.changes.new_leader||d.changes.new_badges);speakText(d.narration,hasChanges?'joy':'encouragement')}catch(e){}
 };
-
-$('#storyBtn').onclick=async()=>{
-  try{const r=await fetch(API+'/unified-story');const d=await r.json();addControl('Story: '+d.narration);speakText(d.narration,d.emotion||'reflection')}catch(e){}
-};
-
-$('#tuneBtn').onclick=async()=>{
-  const tp=$('#tunePanel');tp.innerHTML='Analyzing...';
+$('#badgeNarrBtn').onclick=async()=>{
   try{
-    const r=await fetch(API+'/adaptive-tuning');const d=await r.json();
-    const adj=d.suggested_adjustments||{};
-    const drift=d.current_drift||{};
-    const hasAdj=Object.keys(adj).length>0;
-    tp.innerHTML=(d.messages.length?d.messages.join('<br>'):'No adjustments')+'<br><span style="font-size:8px;color:var(--text3)">Drift: '+
-      Object.entries(drift).map(([k,v])=>k+':'+(v>0?'+':'')+v).join(', ')+
-      (hasAdj?' | Suggested: '+Object.entries(adj).map(([k,v])=>k+'+'+v).join(', '):'')+'</span>'+
-      (hasAdj?'<br><div style="display:flex;gap:4px;margin-top:2px"><button class="btn" id="applyBalanceBtn" style="background:var(--green);color:var(--bg);font-size:9px;padding:2px 6px">✓ Apply</button><button class="btn" id="rollbackBalanceBtn" style="background:var(--red);color:var(--bg);font-size:9px;padding:2px 6px">↺ Rollback</button></div>':'')
-  }catch(e){tp.innerHTML='Error: '+e.message}
-};
-
-document.addEventListener('click',function(e){
-  if(e.target&&e.target.id==='applyBalanceBtn'){
-    e.target.disabled=1;e.target.textContent='Applying...';
-    fetch(API+'/auto-balance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{addControl('Auto-balance: '+d.message);if(d.balance)weights=d.balance;updateW();e.target.textContent='✓ Applied';e.target.style.background='var(--surface3)'}).catch(()=>{e.target.textContent='Error'})
-  }
-  if(e.target&&e.target.id==='rollbackBalanceBtn'){
-    e.target.disabled=1;e.target.textContent='Rolling back...';
-    fetch(API+'/rollback-balance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{addControl('Rollback: '+d.message);if(d.balance)weights=d.balance;updateW();e.target.textContent='↺ Rolled Back';if(d.degraded)speakText('Confidence dropped. Balance rolled back.','empathy')}).catch(()=>{e.target.textContent='Error'})
-  }
-});
-
-async function refreshHybridMode(){
-  try{
-    const r=await fetch(API+'/hybrid-mode');const d=await r.json();
-    const sel=$('#hybridModeSelect');
-    sel.value=d.mode;
-    const info=$('#hybridInfo');
-    if(d.mode==='cloud'&&d.cloud_configured){
-      info.innerHTML='<span style="color:var(--green)">\u25CF</span> Cloud: '+d.cloud_model;
-    }else if(d.mode==='cloud'&&!d.cloud_configured){
-      info.innerHTML='<span style="color:var(--red)">\u25CF</span> Set LLM_CLOUD_KEY env var';
-    }else{
-      info.innerHTML='<span style="color:var(--text2)">\u25CF</span> Local: '+d.local_model+' @ '+d.local_url.split('/').slice(-1);
-    }
-    $('#hybridStatus').textContent=d.mode==='cloud'?'\u2601\uFE0F':'🖥'
+    const r=await fetch(API+'/badge-alerts');const d=await r.json();
+    if(d.narration){addControl(d.narration);speakText(d.narration,'joy')}else{addControl('No new badges yet.');speakText('No new badges to announce.','reflection')}
   }catch(e){}
+};
+$('#impactNarrBtnLB').onclick=$('#impactNarrBtnTab').onclick;
+$('#narrateContribBtn').onclick=async()=>{
+  try{const r=await fetch(API+'/contributor-narration');const d=await r.json();addControl('Contributors: '+d.narration);speakText(d.narration,'encouragement')}catch(e){}
+};
+
+function switchTab(tabId){
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el=>el.classList.remove('active'));
+  const tab=document.getElementById('tab-'+tabId);
+  if(tab)tab.classList.add('active');
+  const btn=document.querySelector('[data-tab="'+tabId+'"]');
+  if(btn)btn.classList.add('active');
+  if(tabId==='dashboard')refreshDashboard();
+  if(tabId==='drift')loadDrift();
+  if(tabId==='leaderboard')refreshLeaderboard('#leaderboardPanelLB');
+  if(tabId==='story'){refreshLeaderboard('#leaderboardPanel');$('#storyPanel').innerHTML='Tap "Narrate" for a full story.'}
 }
-
-$('#hybridModeSelect').onchange=async()=>{
-  const mode=$('#hybridModeSelect').value;
-  try{
-    await fetch(API+'/hybrid-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
-    await refreshHybridMode();
-    addControl('Hybrid mode set to '+mode)
-  }catch(e){}
-};
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.onclick=()=>switchTab(btn.dataset.tab)
+});
 
 vb.onclick=()=>{
   if(listening){R&&R.stop();return}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){vs.textContent='Voice not supported';return}
+  if(!SR){addControl('Voice not supported');return}
   R=new SR();R.lang='en-US';R.interimResults=0;R.continuous=0;
-  R.onstart=()=>{listening=1;vb.textContent='\u23F9 Stop';vb.style.background='var(--red)';vs.textContent='Listening...';vs.className='listening'};
-  R.onend=()=>{listening=0;vb.textContent='\uD83C\uDFA4 Voice';vb.style.background='var(--surface3)';vs.textContent='Idle';vs.className='stat'};
+  R.onstart=()=>{listening=1;vb.textContent='\u23F9';vb.style.background='var(--red)'};
+  R.onend=()=>{listening=0;vb.textContent='\uD83C\uDFA4';vb.style.background='var(--surface3)'};
   R.onresult=e=>{
     const t=e.results[0][0].transcript;
     const parsed=parseWeightText(t);
-    if(parsed){weights=parsed;updateW();vs.textContent='Weights: '+JSON.stringify(weights);speakText('Weights updated');addControl('Voice weights: '+JSON.stringify(weights))}
-    else{vs.textContent='Heard: '+t;chat(t)}
+    if(parsed){weights=parsed;updateW();speakText('Weights updated');addControl('Voice weights: '+JSON.stringify(weights))}
+    else{chat(t)}
   };
-  R.onerror=e=>{vs.textContent='Error: '+e.error;listening=0;vb.textContent='\uD83C\uDFA4 Voice';vb.style.background='var(--surface3)'};
+  R.onerror=e=>{listening=0;vb.textContent='\uD83C\uDFA4';vb.style.background='var(--surface3)'};
   R.start()
 };
 
-refreshStats();updateW();updateHeatmap();refreshAdaptive();refreshEscalationStatus();refreshLeaderboard();refreshHybridMode();refreshDashboard();setInterval(refreshStats,10000);setInterval(updateHeatmap,15000);setInterval(refreshAdaptive,20000);setInterval(refreshContributors,25000);setInterval(refreshEscalationStatus,30000);setInterval(refreshLeaderboard,35000);setInterval(refreshHybridMode,45000);setInterval(refreshDashboard,55000);
-add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights, or click <b>Narrate Training</b> for a spoken training summary.</span>')
+updateW();refreshMetrics();setInterval(refreshMetrics,15000);setInterval(checkBadgeAlerts,20000);setInterval(refreshDashboard,55000);
+add('assistant','Hey, I\u2019m youfeel. What\u2019s on your mind?<br><span style="font-size:11px;color:var(--text3)">Tip: type <b>set mentor 60 coach 25 teacher 15</b> to adjust weights.</span>')
 </script>
 </body>
 </html>

@@ -68,6 +68,7 @@ PREV_FEWSHOT_COUNT = 0
 PREV_CONFLICT_COUNT = 0
 PREV_GOLD_COUNT = 0
 PREV_LEADERBOARD = None
+PREV_BADGE_MAP = {}
 LATEST_FED_SIM_RESULTS = None
 PERSONA_BALANCE = {"mentor": 50, "coach": 25, "teacher": 25}
 AUTO_BALANCE_ENABLED = True
@@ -86,6 +87,7 @@ WEIGHT_BOOST_FACTOR = 12
 WEIGHT_DECAY_PER_TURN = 3
 PREDICTIVE_BOOST = 8
 CONFLICT_AUTO_POLICY = "low"
+DYNAMIC_BOOST = {"persona": "mentor", "reason": "default"}
 
 ESCAPED_MODEL = re.sub(r'[^a-zA-Z0-9_-]', '_', LLM_MODEL)
 
@@ -104,6 +106,7 @@ class ChatResponse(BaseModel):
     intent: Optional[str] = None
     escalation_tier: Optional[int] = None
     emotion: Optional[str] = None
+    dynamic_boost: Optional[dict] = None
 
 
 def score_reply(reply: str) -> int:
@@ -441,6 +444,22 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         WEAK_INTENT_COUNTER[intent_key] = WEAK_INTENT_COUNTER.get(intent_key, 0) + 1
         INTENT_ESCALATION_COUNTER[intent_key] += 1
 
+    avg_conf = round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else 100
+    global DYNAMIC_BOOST
+    if CONSECUTIVE_LOW >= 5:
+        DYNAMIC_BOOST = {"persona": "coach", "reason": f"consecutive low scores ({CONSECUTIVE_LOW})"}
+    elif CONSECUTIVE_LOW >= 3:
+        DYNAMIC_BOOST = {"persona": "mentor", "reason": "escalation detected"}
+    elif avg_conf >= 80 and intent == "explain":
+        DYNAMIC_BOOST = {"persona": "teacher", "reason": "high confidence + explanation intent"}
+    elif avg_conf >= 80:
+        DYNAMIC_BOOST = {"persona": "mentor", "reason": "high confidence baseline"}
+    else:
+        DYNAMIC_BOOST = {"persona": "mentor", "reason": "default"}
+    boost = DYNAMIC_BOOST["persona"]
+    if boost in weights:
+        weights[boost] = min(100, weights.get(boost, 50) + 8)
+
     if weights:
         normalize_weights(weights)
 
@@ -451,6 +470,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         intent=intent,
         escalation_tier=escalation_tier,
         emotion=emotion,
+        dynamic_boost=dict(DYNAMIC_BOOST),
     )
 
 
@@ -1072,7 +1092,28 @@ async def unified_story():
     else:
         chapters.append("The leaderboard is empty.")
 
-    # Chapter 3: Simulation resilience
+    # Chapter 3: Contributor highlights
+    if entries:
+        for e in entries[:3]:
+            parts_h = []
+            drift_actions = [d for d in PERSONA_DRIFT_LOG if d["user_id"] == e["user_id"] and d["action"] != "federated_simulate"]
+            p_deltas = {}
+            for d in drift_actions:
+                if d.get("weights"):
+                    for p, v in d["weights"].items():
+                        p_deltas[p] = v
+            if p_deltas:
+                delta_str = ", ".join(f"{p} {v}" for p, v in sorted(p_deltas.items()))
+                parts_h.append(f"{e['user_id']} shaped weights to {delta_str}")
+            if e.get("badges"):
+                badge_names = {"\U0001F3C6": "Trophy", "\U0001F947": "Gold", "\U0001F948": "Silver", "\u2B50": "Star", "\U0001F504": "Syncer", "\u2705": "Clean", "\u26A1": "Energizer", "\U0001F3A4": "Narrator", "\U0001F9E9": "Strategist", "\U0001F91D": "Diplomat", "\U0001F31F": "Pioneer"}
+                names = [badge_names.get(b, b) for b in e["badges"] if b]
+                if names:
+                    parts_h.append(f"earning the {', '.join(names)} badge{'s' if len(names) > 1 else ''}")
+            if parts_h:
+                chapters.append(". ".join(parts_h) + ".")
+
+    # Chapter 4: Simulation resilience
     sim_data = LATEST_FED_SIM_RESULTS
     if sim_data and sim_data.get("ranked"):
         ranked = sim_data["ranked"]
@@ -1093,6 +1134,32 @@ async def unified_story():
     narration = " ".join(chapters)
     emotion = compute_narration_emotion(avg_conf=avg_conf, escalations=len(ESCALATION_EVENTS), consecutive_low=CONSECUTIVE_LOW)
     return {"narration": narration, "chapters": chapters, "emotion": emotion}
+
+
+@app.get("/api/dynamic-boost")
+async def get_dynamic_boost():
+    return {"boost": DYNAMIC_BOOST, "consecutive_low": CONSECUTIVE_LOW, "avg_conf": round(sum(RECENT_SCORES) / len(RECENT_SCORES), 1) if RECENT_SCORES else None}
+
+
+@app.get("/api/badge-alerts")
+async def badge_alerts():
+    global PREV_BADGE_MAP
+    lb = await leaderboard()
+    entries = lb.get("leaderboard", [])
+    new_badges = []
+    badge_names = {"\U0001F3C6": "Trophy", "\U0001F947": "Gold", "\U0001F948": "Silver", "\u2B50": "Star", "\U0001F504": "Syncer", "\u2705": "Clean", "\u26A1": "Energizer", "\U0001F3A4": "Narrator", "\U0001F9E9": "Strategist", "\U0001F91D": "Diplomat", "\U0001F31F": "Pioneer"}
+    for e in entries:
+        uid = e["user_id"]
+        curr = set(e.get("badges", []))
+        prev = set(PREV_BADGE_MAP.get(uid, []))
+        gained = curr - prev
+        for b in gained:
+            new_badges.append({"user_id": uid, "badge": b, "name": badge_names.get(b, b)})
+        PREV_BADGE_MAP[uid] = list(curr)
+    if new_badges:
+        parts = [f"{nb['user_id']} earned the {nb['name']} badge" for nb in new_badges]
+        return {"alerts": new_badges, "narration": "Badge alert. " + ". ".join(parts) + "."}
+    return {"alerts": [], "narration": None}
 
 
 @app.get("/api/hybrid-mode")
