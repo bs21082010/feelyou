@@ -30,8 +30,10 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes barPulse{0%{opacity:1}50%{opacity:.6}100%{opacity:1}}
 @keyframes avatarPulse{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(137,180,250,.5)}50%{transform:scale(1.25);box-shadow:0 0 8px 2px rgba(137,180,250,.4)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(137,180,250,0)}}
+@keyframes glowBurst{0%{transform:scale(1);opacity:1}50%{transform:scale(1.8);opacity:.3}100%{transform:scale(1);opacity:0}}
 .p-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--bg);transition:transform .3s,box-shadow .3s;cursor:default}
 .p-avatar.boosted{animation:avatarPulse .6s ease-in-out 2}
+.milestone-glow{position:absolute;border-radius:50%;pointer-events:none;animation:glowBurst .8s ease-out forwards}
 .user{background:var(--blue);color:var(--bg);align-self:flex-end;border-bottom-right-radius:4px}
 .assistant{background:var(--surface2);color:var(--text);align-self:flex-start;border-bottom-left-radius:4px}
 .msg .meta{font-size:10px;color:var(--text3);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
@@ -141,7 +143,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-dashboard">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="dashRefreshBtn" style="background:var(--blue);color:var(--bg);font-size:11px">⟳</button><button class="btn" id="dashNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Auto</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="dashRefreshBtn" style="background:var(--blue);color:var(--bg);font-size:11px">⟳</button><button class="btn" id="dashNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🔊 Auto</button><button class="btn" id="healthExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📋 Health Export</button></div>
       <div id="dashPanel" class="stat" style="font-size:9px;line-height:1.5">Loading...</div>
       <canvas id="dashCanvas" style="display:none;width:100%;height:60px;margin:6px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
       <hr style="border-color:var(--surface3);margin:8px 0">
@@ -335,7 +337,19 @@ function drawInfluenceChart(canvas){
       });
       if(milestones.length){
         const msg='Influence milestones: '+milestones.join('. ');
-        addControl(msg);speakText(msg,'encouragement')
+        addControl(msg);speakText(msg,'encouragement');
+        const chartParent=canvas.parentElement;
+        if(chartParent){
+          const rect=canvas.getBoundingClientRect();
+          const parentRect=chartParent.getBoundingClientRect();
+          const glow=document.createElement('div');
+          glow.className='milestone-glow';
+          const sz=Math.min(rect.width,rect.height)*0.4;
+          glow.style.cssText='width:'+sz+'px;height:'+sz+'px;background:radial-gradient(circle,rgba(137,180,250,0.3),transparent);top:'+(rect.height/2-sz/2)+'px;left:'+(rect.width/2-sz/2)+'px';
+          glow.style.position='absolute';
+          chartParent.appendChild(glow);
+          setTimeout(()=>glow.remove(),1000)
+        }
       }
     })
   }catch(e){canvas.style.display='none'}
@@ -347,8 +361,8 @@ function generateReplayHTML(d){
   const narration=d.narration||'';
   const total=steps.length;
   let stepHTML=steps.map(s=>'<div class="step" data-idx="'+s.index+'"><div class="step-num">Step '+s.index+'</div><div class="step-text">'+s.narration+'</div></div>').join('');
-  const speechJS='<script>window.addEventListener("DOMContentLoaded",()=>{let si=0;const steps=document.querySelectorAll(".step");const bar=document.getElementById("progressBar");const counter=document.getElementById("stepCounter");const cinStep=document.getElementById("cinStep");const synth=window.speechSynthesis;const speak=(t)=>{synth.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=0.9;synth.speak(u)};const updateUI=()=>{steps.forEach((el,i)=>{el.classList.toggle("active",i===si);if(i===si)el.scrollIntoView({behavior:"smooth",block:"center"})});if(bar)bar.style.width=((si+1)/steps.length*100)+"%";if(counter)counter.textContent="Step "+(si+1)+"/"+steps.length;if(cinStep&&steps[si])cinStep.textContent=steps[si].textContent};speak("'+narration.replace(/"/g,'&quot;')+'");const iv=setInterval(()=>{if(si>=steps.length){clearInterval(iv);if(counter)counter.textContent="Complete";if(bar)bar.style.background="#a6e3a1";return}updateUI();const t=steps[si].textContent;speak(t);si++},2200)})<\/script>';
-  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>youfeel Replay Video</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;min-height:100vh}.player{position:sticky;top:0;background:#11111b;padding:8px 12px;z-index:10;border-bottom:1px solid #45475a;display:flex;flex-direction:column;gap:4px}.player-bar{display:flex;align-items:center;gap:8px}.progress-track{flex:1;height:4px;background:#313244;border-radius:2px;overflow:hidden}.progress-fill{height:100%;background:#89b4fa;width:0%;transition:width .3s;border-radius:2px}#stepCounter{font-size:11px;color:#a6adc8;min-width:70px}#cinStep{font-size:10px;color:#6c7086;padding:2px 0;min-height:16px;line-height:1.3}.content{padding:12px;max-width:600px;margin:0 auto}h1{color:#89b4fa;font-size:16px;margin-bottom:8px}.ch{color:#a6adc8;margin:4px 0;padding:4px 6px;background:#181825;border-radius:4px;font-size:12px}.step{display:flex;gap:6px;margin:3px 0;padding:6px;background:#313244;border-radius:4px;font-size:13px;line-height:1.4;border-left:3px solid transparent;transition:all .3s}.step.active{border-left-color:#89b4fa;background:#45475a;box-shadow:0 0 8px rgba(137,180,250,.2)}.step-num{font-weight:600;color:#89b4fa;min-width:54px;font-size:11px}.step-text{color:#cdd6f4}.note{color:#6c7086;font-size:10px;text-align:center;padding:8px}h2{color:#a6e3a1;font-size:13px;margin:8px 0 4px}hr{border-color:#45475a;margin:8px 0}</style></head><body><div class="player"><div class="player-bar"><div class="progress-track"><div class="progress-fill" id="progressBar"></div></div><span id="stepCounter">Step 1/'+total+'</span></div><div id="cinStep"></div></div><div class="content"><h1>\u25B6 youfeel Replay</h1><p class="note">Audio narration plays automatically. Steps auto-advance.</p><hr>'+chapters.map((c,i)=>'<div class="ch">'+(i+1)+'. '+c+'</div>').join('')+'<hr><h2>Timeline</h2>'+stepHTML+'<hr><div class="note">Generated by youfeel</div></div>'+speechJS+'</body></html>'
+  const speechJS='<script>window.addEventListener("DOMContentLoaded",()=>{let si=0,paused=0,speed=1;const steps=document.querySelectorAll(".step");const bar=document.getElementById("progressBar");const counter=document.getElementById("stepCounter");const cinStep=document.getElementById("cinStep");const playBtn=document.getElementById("playBtn");const speedBtn=document.getElementById("speedBtn");const synth=window.speechSynthesis;const speak=(t)=>{synth.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=0.9*speed;synth.speak(u)};const updateUI=()=>{steps.forEach((el,i)=>{el.classList.toggle("active",i===si);if(i===si)el.scrollIntoView({behavior:"smooth",block:"center"})});if(bar)bar.style.width=((si+1)/steps.length*100)+"%";if(counter)counter.textContent=(si+1)+"/"+steps.length;if(cinStep&&steps[si])cinStep.textContent=steps[si].textContent};const tick=()=>{if(paused||si>=steps.length)return;updateUI();const t=steps[si].textContent;speak(t);si++;if(si>=steps.length){if(counter)counter.textContent="Complete";if(bar)bar.style.background="#a6e3a1";if(playBtn)playBtn.textContent="\u25B6";return}};playBtn.onclick=()=>{paused=!paused;playBtn.textContent=paused?"\u25B6":"\u23F8"};speedBtn.onclick=()=>{speed=speed===1?1.5:speed===1.5?2:1;speedBtn.textContent=speed+"x"};speak("'+narration.replace(/"/g,'&quot;')+'");const iv=setInterval(tick,2200/speed);setInterval(()=>{if(!paused&&si<steps.length&&synth.speaking===false)tick()},500)})<\/script>';
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>youfeel Replay Video</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;min-height:100vh}.player{position:sticky;top:0;background:#11111b;padding:8px 12px;z-index:10;border-bottom:1px solid #45475a;display:flex;flex-direction:column;gap:4px}.player-bar{display:flex;align-items:center;gap:6px}.progress-track{flex:1;height:4px;background:#313244;border-radius:2px;overflow:hidden;cursor:pointer}.progress-fill{height:100%;background:#89b4fa;width:0%;transition:width .3s;border-radius:2px}#stepCounter{font-size:10px;color:#a6adc8;min-width:50px;white-space:nowrap}#cinStep{font-size:10px;color:#6c7086;padding:2px 0;min-height:16px;line-height:1.3}.ctrl{display:flex;gap:4px;align-items:center}.ctrl button{background:#313244;border:none;color:#cdd6f4;padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer}.ctrl button:hover{background:#45475a}.record-dot{width:6px;height:6px;border-radius:50%;background:var(--red,#f38ba8);display:inline-block;animation:pulse 1s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}.content{padding:12px;max-width:600px;margin:0 auto}h1{color:#89b4fa;font-size:16px;margin-bottom:8px;display:flex;align-items:center;gap:6px}.ch{color:#a6adc8;margin:4px 0;padding:4px 6px;background:#181825;border-radius:4px;font-size:12px}.step{display:flex;gap:6px;margin:3px 0;padding:6px;background:#313244;border-radius:4px;font-size:13px;line-height:1.4;border-left:3px solid transparent;transition:all .3s}.step.active{border-left-color:#89b4fa;background:#45475a;box-shadow:0 0 8px rgba(137,180,250,.4)}.step-num{font-weight:600;color:#89b4fa;min-width:54px;font-size:11px}.step-text{color:#cdd6f4}.note{color:#6c7086;font-size:10px;text-align:center;padding:4px}h2{color:#a6e3a1;font-size:13px;margin:8px 0 4px}hr{border-color:#45475a;margin:8px 0}</style></head><body><div class="player"><div class="player-bar"><span class="record-dot"></span><div class="progress-track" id="progressTrack" onclick="var p=document.getElementById('progressBar');if(p&&window._steps){var idx=Math.floor((event.offsetX/this.offsetWidth)*window._steps.length);window._goto(idx)}"><div class="progress-fill" id="progressBar"></div></div><span id="stepCounter">1/'+total+'</span></div><div id="cinStep"></div><div class="ctrl"><button id="playBtn">\u23F8</button><button id="speedBtn">1x</button></div></div><div class="content"><h1><span class="record-dot"></span> youfeel Replay</h1><p class="note">Use controls to play/pause and adjust speed. Click progress bar to scrub.</p><hr>'+chapters.map((c,i)=>'<div class="ch">'+(i+1)+'. '+c+'</div>').join('')+'<hr><h2>Timeline</h2>'+stepHTML+'<hr><div class="note">Generated by youfeel</div><script>window._steps=document.querySelectorAll(".step");window._goto=function(idx){if(idx>=document.querySelectorAll(".step").length)return;window.speechSynthesis&&window.speechSynthesis.cancel();document.querySelectorAll(".step").forEach((el,i)=>{el.classList.toggle("active",i===idx);if(i===idx)el.scrollIntoView({behavior:"smooth",block:"center"})});var bar=document.getElementById("progressBar");if(bar)bar.style.width=((idx+1)/document.querySelectorAll(".step").length*100)+"%";document.getElementById("stepCounter").textContent=(idx+1)+"/"+document.querySelectorAll(".step").length;document.getElementById("cinStep").textContent=document.querySelectorAll(".step")[idx].textContent;var u=new SpeechSynthesisUtterance(document.querySelectorAll(".step")[idx].textContent);u.rate=0.9;window.speechSynthesis&&window.speechSynthesis.speak(u)}<\/script></div>'+speechJS+'</body></html>'
 }
 
 function generateContributorVideoHTML(d,dn){
@@ -717,6 +731,18 @@ $('#healthBtnDash').onclick=async()=>{
     const trendNarrations=[trendMsg,deltaPart,...compParts].filter(Boolean).join('. ');
     if(trendNarrations){addControl('Health: '+trendNarrations);speakText(trendNarrations,trend==='improving'?'joy':trend==='declining'?'empathy':'reflection')}
   }catch(e){panel.innerHTML='Error loading health data';panel.style.display='block'}
+};
+$('#healthExportBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/confidence-health/export');const blob=await r.blob();
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download='confidence-health-'+new Date().toISOString().slice(0,10)+'.txt';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    const rd=await fetch(API+'/confidence-health');const d=await rd.json();
+    const trend=d.trend||'stable';const ov=d.overall||{};
+    const nar=trend==='improving'?'Confidence improving':trend==='declining'?'Confidence declining':'Confidence stable';
+    addControl('Health report exported: '+nar+', avg '+ov.avg+'%');speakText(nar+', average '+ov.avg+' percent','reflection')
+  }catch(e){}
 };
 
 function drawCovChart(canvas, history){
