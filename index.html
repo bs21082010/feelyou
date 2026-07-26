@@ -103,7 +103,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-story">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button><button class="btn" id="legacyExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📥 Legacy Export</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
       <canvas id="replayCanvas" style="display:none;width:100%;height:100px;border-radius:var(--radius-sm);background:var(--surface2);margin:4px 0"></canvas>
       <div id="replaySliderRow" style="display:none;margin:2px 0;gap:6px;align-items:center;flex-wrap:wrap">
@@ -204,7 +204,7 @@ async function chat(msg){
     const r2=await fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,persona:persona,weights:weights,conversation:conv})});
     const d=await r2.json();
     add('assistant',d.reply,`${d.emotion?'\u2728 '+d.emotion:''} \u2022 score: ${d.score}${d.intent?' \u2022 '+d.intent:''}${d.escalation_tier?' \u2022 tier '+d.escalation_tier:''}`);
-    weights=d.weights||weights;updateW();updateAvatarEvolution();
+    weights=d.weights||weights;updateW();updateAvatarEvolution(true);
     if(d.dynamic_boost&&d.dynamic_boost.changed){
       const b=d.dynamic_boost;
       const reasonMap={'consecutive low scores':'after '+d.dynamic_boost.reason.match(/\d+/)?.[0]||'several'+' consecutive low confidence replies','escalation detected':'an escalation was detected','high confidence + explanation intent':'confidence is high with an explanation request','high confidence baseline':'consistently high confidence','default':'normal conditions'};
@@ -242,7 +242,8 @@ function cue(tier,intent){
   }catch(e){}
 }
 
-async function updateAvatarEvolution(){
+let prevAvatarInfluence={};
+async function updateAvatarEvolution(narrate){
   try{
     const r=await fetch(API+'/persona-influence');const d=await r.json();
     const inf=d.influence||{},total=d.total||1;
@@ -258,7 +259,17 @@ async function updateAvatarEvolution(){
       el.style.width=size+'px';el.style.height=size+'px';
       el.style.fontSize=Math.round(size/2.4)+'px';
       if(glow>1)el.style.boxShadow='0 0 '+glow+'px '+colors[pi];else el.style.boxShadow='none'
-    })
+    });
+    if(narrate){
+      const parts=[];
+      personas.forEach(p=>{
+        const cur=inf[p]||0,prev=prevAvatarInfluence[p]||0;
+        const diff=Math.round(cur-prev);
+        if(Math.abs(diff)>=5)parts.push(p+' grew by '+diff+' (cumulative '+cur+')')
+      });
+      if(parts.length){const msg='Avatar evolution: '+parts.join('. ');addControl(msg);speakText(msg,'encouragement')}
+    }
+    prevAvatarInfluence={...inf}
   }catch(e){}
 }
 
@@ -704,11 +715,25 @@ $('#sessionReplayBtn').onclick=async()=>{
     if(boosts&&boosts.length)setTimeout(()=>{pulseAvatar(boosts[boosts.length-1].boost.persona||'coach')},500);
     drawReplayChart($('#replayCanvas'),d);
     if(steps.length>=2){
-      const slider=$('#replaySlider'),row=$('#replaySliderRow'),label=$('#replayStepLabel'),stepNarr=$('#replayStepNarration');
+let prevHealthZone='';
+function getHealthZone(score){
+  if(score>=70)return 'healthy';if(score>=50)return 'warning';return 'critical'
+}
+function narrateHealthZone(score,stepName){
+  if(score===undefined||score===null)return;
+  const zone=getHealthZone(score);
+  if(zone!==prevHealthZone&&prevHealthZone){
+    const msgs={'healthy':'entered healthy zone at '+score+' percent','warning':'entered warning zone at '+score+' percent','critical':'entered critical zone at '+score+' percent'};
+    const msg=stepName+' confidence '+msgs[zone];
+    addControl(msg);speakText(msg,'reflection',true)
+  }
+  prevHealthZone=zone
+}      const slider=$('#replaySlider'),row=$('#replaySliderRow'),label=$('#replayStepLabel'),stepNarr=$('#replayStepNarration');
       slider.max=steps.length-1;slider.value=0;
       label.textContent='0/'+(steps.length-1);
       row.style.display='flex';stepNarr.style.display='block';
       stepNarr.textContent=steps[0].narration||'Step 0';
+      prevHealthZone='';
       slider.oninput=()=>{
         if(replayPlaying){replayPlaying=0;if(replayTimer){clearInterval(replayTimer);replayTimer=null}$('#replayPlayBtn').textContent='▶️'}
         const idx=parseInt(slider.value);
@@ -716,18 +741,21 @@ $('#sessionReplayBtn').onclick=async()=>{
         stepNarr.textContent=steps[idx].narration||'Step '+idx;
         drawReplayChart($('#replayCanvas'),d,idx);
         const step=steps[idx];
-        if(step.boost&&step.boost.changed)pulseAvatar(step.boost.persona||'coach')
+        if(step.boost&&step.boost.changed)pulseAvatar(step.boost.persona||'coach');
+        narrateHealthZone(step.confidence,'Step '+idx)
       };
       $('#replayPlayBtn').onclick=()=>{
         if(replayPlaying){replayPlaying=0;if(replayTimer){clearInterval(replayTimer);replayTimer=null}$('#replayPlayBtn').textContent='▶️';return}
         replayPlaying=1;$('#replayPlayBtn').textContent='⏸';
         let si=parseInt(slider.value);
+        prevHealthZone=getHealthZone(steps[si]&&steps[si].confidence);
         replayTimer=setInterval(()=>{
           if(si>=steps.length-1){replayPlaying=0;clearInterval(replayTimer);replayTimer=null;$('#replayPlayBtn').textContent='▶️';return}
           si++;slider.value=si;slider.oninput();
           const step=steps[si];
           if(step.boost&&step.boost.changed)pulseAvatar(step.boost.persona||'coach');
-          speakText(step.narration||'','reflection',true)
+          speakText(step.narration||'','reflection',true);
+          narrateHealthZone(step.confidence,'Step '+si)
         },1200)
       }
     }
@@ -759,6 +787,16 @@ $('#exportBtn').onclick=async()=>{
 };
 $('#legacyNarrBtn').onclick=async()=>{
   try{const r=await fetch(API+'/contributor-legacy-narration');const d=await r.json();$('#storyPanel').innerHTML='<b>Legacy Narration</b><div style="margin-top:4px;line-height:1.4">'+d.narration+'</div>';addControl('Legacy: '+d.narration);speakText(d.narration,d.emotion||'encouragement')}catch(e){}
+};
+$('#legacyExportBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/contributor-legacy/export');const blob=await r.blob();
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download='contributor-legacy-'+new Date().toISOString().slice(0,10)+'.txt';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    const rn=await fetch(API+'/contributor-legacy-narration');const dn=await rn.json();
+    addControl('Legacy report exported: '+dn.narration);speakText(dn.narration,dn.emotion||'encouragement')
+  }catch(e){}
 };
 
 let animDriftInterval=null;

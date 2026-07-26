@@ -1351,9 +1351,11 @@ async def persona_influence():
 @app.get("/api/session-replay/export")
 async def session_replay_export():
     story_resp = await orchestration_story()
+    replay_resp = await session_replay()
     weight_data = WEIGHT_HISTORY[-50:]
     score_data = RECENT_SCORES[-20:]
     badge_data = BADGE_HISTORY[-20:]
+    steps = replay_resp.get("steps", [])
     now_str = datetime.utcnow().isoformat()
     lines = [
         f"youfeel Session Report — {now_str}",
@@ -1365,6 +1367,9 @@ async def session_replay_export():
         "=== CHAPTERS ===",
     ]
     lines.extend(f"  {i+1}. {c}" for i, c in enumerate(story_resp["chapters"]))
+    lines.extend(["", "=== TIMELINE EVENTS ==="])
+    for s in steps:
+        lines.append(f"  Step {s['index']}: {s['narration']}")
     lines.extend(["", "=== WEIGHT HISTORY ==="])
     for w in weight_data:
         w_str = json.dumps(w)
@@ -1379,6 +1384,48 @@ async def session_replay_export():
         content=text,
         media_type="text/plain",
         headers={"Content-Disposition": f'attachment; filename="session-report-{now_str[:10]}.txt"'},
+    )
+
+
+@app.get("/api/contributor-legacy/export")
+async def contributor_legacy_export():
+    data = await contributor_legacy()
+    narr_resp = await contributor_legacy_narration()
+    now_str = datetime.utcnow().isoformat()
+    lines = [
+        f"youfeel Contributor Legacy Report — {now_str}",
+        f"Mode: {HYBRID_MODE}",
+        "",
+        "=== NARRATION ===",
+        narr_resp["narration"],
+        "",
+    ]
+    for u in data.get("legacy", []):
+        lines.append(f"--- {u['user_id']} ---")
+        lines.append(f"  Total events: {u['total_events']}")
+        lines.append(f"  Last action: {u['last_action']} ({u['last_seen'] or 'unknown'})")
+        lines.append(f"  Badge count: {u['badge_count']}")
+        for b in u.get("badges", []):
+            lines.append(f"    {b['badge']} {b['name']} ({b['timestamp']})")
+        lines.append(f"  Weight influence: {json.dumps(u.get('weight_influence', {}))}")
+        lines.append(f"  Events by type: {json.dumps(u.get('events_by_type', {}))}")
+        dt = u.get("drift_timeline", [])
+        if dt:
+            lines.append(f"  Drift timeline ({len(dt)} events):")
+            for e in dt[-10:]:
+                lines.append(f"    {e.get('timestamp','')} — {e['action']} {json.dumps(e.get('weights',{}))}")
+        for p in ("mentor", "coach", "teacher"):
+            vals = [(i, e.get("weights", {}).get(p, 0)) for i, e in enumerate(dt) if e.get("weights", {}).get(p, 0) > 0]
+            if vals:
+                peak = max(vals, key=lambda x: x[1])
+                when = dt[peak[0]].get("timestamp", "")[:10] if dt[peak[0]].get("timestamp") else ""
+                lines.append(f"  {p} peak: {peak[1]} at index {peak[0]}" + (f" around {when}" if when else ""))
+        lines.append("")
+    text = "\n".join(lines)
+    return Response(
+        content=text,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="contributor-legacy-{now_str[:10]}.txt"'},
     )
 
 
