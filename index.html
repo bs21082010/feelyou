@@ -103,7 +103,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-story">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button><button class="btn" id="legacyExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📥 Legacy Export</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="cinematicReplayBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎬 Cinematic</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button><button class="btn" id="legacyExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📥 Legacy Export</button><button class="btn" id="legacyTimelineExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📊 Timeline Export</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
       <canvas id="replayCanvas" style="display:none;width:100%;height:100px;border-radius:var(--radius-sm);background:var(--surface2);margin:4px 0"></canvas>
       <div id="replaySliderRow" style="display:none;margin:2px 0;gap:6px;align-items:center;flex-wrap:wrap">
@@ -126,6 +126,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
       <hr style="border-color:var(--surface3);margin:8px 0">
       <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Weight Delta Over Time</div>
       <canvas id="weightDeltaCanvas" style="width:100%;height:80px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
+      <hr style="border-color:var(--surface3);margin:8px 0">
+      <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Cumulative Avatar Influence</div>
+      <canvas id="influenceChart" style="width:100%;height:80px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
     </div>
   </div>
   <div class="tab-content" id="tab-leaderboard">
@@ -142,8 +145,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
       <div id="dashPanel" class="stat" style="font-size:9px;line-height:1.5">Loading...</div>
       <canvas id="dashCanvas" style="display:none;width:100%;height:60px;margin:6px 0;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
       <hr style="border-color:var(--surface3);margin:8px 0">
-      <div style="display:flex;gap:4px;margin-bottom:4px"><button class="btn" id="driftBtnDash" style="background:var(--blue);color:var(--bg);font-size:10px">📊 Drift</button><button class="btn" id="covBtn" style="background:var(--surface3);color:var(--text);font-size:10px">📈 Coverage</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:4px"><button class="btn" id="driftBtnDash" style="background:var(--blue);color:var(--bg);font-size:10px">📊 Drift</button><button class="btn" id="covBtn" style="background:var(--surface3);color:var(--text);font-size:10px">📈 Coverage</button><button class="btn" id="healthBtnDash" style="background:var(--surface3);color:var(--text);font-size:10px">❤️ Health</button></div>
       <canvas id="covCanvasDash" style="display:none;width:100%;height:80px;border-radius:var(--radius-sm);background:var(--surface2)"></canvas>
+      <div id="healthPanelDash" style="display:none;font-size:9px;color:var(--text2);background:var(--surface2);border-radius:var(--radius-sm);padding:4px;margin:4px 0"></div>
     </div>
   </div>
 </div>
@@ -273,6 +277,111 @@ async function updateAvatarEvolution(narrate){
   }catch(e){}
 }
 
+function drawInfluenceChart(canvas){
+  try{
+    fetch(API+'/influence-history').then(r=>r.json()).then(d=>{
+      const h=d.history||[];
+      if(h.length<2){canvas.style.display='none';return}
+      canvas.style.display='block';
+      const ctx=canvas.getContext('2d');
+      const W=canvas.parentElement.clientWidth-4||220,H=80;
+      canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';
+      ctx.scale(2,2);
+      const pad={t:8,b:14,l:22,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+      ctx.clearRect(0,0,W,H);
+      const personas=['mentor','coach','teacher'],colors=['#89b4fa','#a6e3a1','#f9e2af'];
+      const maxTotals=h.map(s=>s.total||0),maxTotal=Math.max(...maxTotals,1);
+      ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
+      for(let i=0;i<=4;i++){
+        const y=pad.t+ch-(i/4*ch),v=Math.round(i/4*maxTotal);
+        ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.strokeStyle='#45475a';ctx.stroke();
+        ctx.fillStyle='var(--text3)';ctx.textAlign='right';ctx.fillText(v,pad.l-2,y+2)
+      }
+      personas.forEach((p,pi)=>{
+        ctx.beginPath();ctx.strokeStyle=colors[pi];ctx.lineWidth=1.2;
+        h.forEach((pt,i)=>{
+          const v=pt.cumulative[p]||0;
+          const x=pad.l+(i/(h.length-1))*cw;
+          const y=pad.t+ch-(v/maxTotal*ch);
+          i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+        });ctx.stroke()
+      });
+      ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
+      ctx.fillText('cumulative influence',pad.l+cw/2,pad.t+ch+12);
+      personas.forEach((p,pi)=>{
+        ctx.fillStyle=colors[pi];ctx.fillRect(pad.l+pi*44,pad.t-6,6,4);
+        ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.fillText(p,pad.l+pi*44+8,pad.t-2)
+      })
+    })
+  }catch(e){canvas.style.display='none'}
+}
+
+function generateReplayHTML(d){
+  const steps=d.steps||[];
+  const chapters=d.chapters||[];
+  let stepHTML=steps.map(s=>'<div style="margin:4px 0;padding:4px;background:#181825;border-radius:6px"><b>Step '+s.index+'</b>: '+s.narration+'</div>').join('');
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>youfeel Replay Storyboard</title><style>body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;padding:16px;max-width:600px;margin:0 auto}h1{color:#89b4fa;font-size:18px}.ch{color:#a6adc8;margin:6px 0;padding:6px;background:#181825;border-radius:6px}.step{margin:3px 0;padding:4px;background:#313244;border-radius:4px;font-size:13px;line-height:1.4}hr{border-color:#45475a;margin:12px 0}</style></head><body><h1>\U0001F3A5 youfeel Replay Storyboard</h1><hr>'+chapters.map((c,i)=>'<div class="ch">'+(i+1)+'. '+c+'</div>').join('')+'<hr><h2 style="color:#a6e3a1;font-size:14px">Timeline</h2>'+stepHTML+'<hr><div style="color:#6c7086;font-size:11px">Generated by youfeel</div></body></html>'
+}
+
+$('#cinematicReplayBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/session-replay');const d=await r.json();
+    const steps=d.steps||[];
+    if(steps.length<2){addControl('Not enough data for cinematic replay');return}
+    $('#storyPanel').innerHTML='<b>\U0001F3AC Cinematic Replay</b><div style="font-size:9px;color:var(--text3);margin:2px 0">Playing through '+steps.length+' steps...</div><div id="cinematicStep" style="margin:4px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm);min-height:20px;font-size:10px;line-height:1.4"></div>';
+    addControl('Cinematic replay started: '+d.narration);speakText('Cinematic replay. '+d.narration,d.emotion||'encouragement');
+    drawReplayChart($('#replayCanvas'),d);
+    $('#replaySliderRow').style.display='none';$('#replayStepNarration').style.display='none';
+    let si=0;
+    const playStep=()=>{
+      if(si>=steps.length){$('#cinematicStep').innerHTML='<span style="color:var(--green)">Replay complete.</span>';return}
+      const step=steps[si];
+      drawReplayChart($('#replayCanvas'),d,si);
+      const pulse=step.boost&&step.boost.changed?step.boost.persona:null;
+      if(pulse)pulseAvatar(pulse);
+      const prevConf=si>0?steps[si-1].confidence:null,curConf=step.confidence;
+      let healthMsg='';
+      if(prevConf!==undefined&&curConf!==undefined){
+        const pz=prevConf>=70?'healthy':prevConf>=50?'warning':'critical';
+        const cz=curConf>=70?'healthy':curConf>=50?'warning':'critical';
+        if(cz!==pz)healthMsg=' <span style="color:'+(cz==='healthy'?'var(--green)':cz==='warning'?'var(--yellow)':'var(--red)')+'">['+cz+' zone]</span>'
+      }
+      $('#cinematicStep').innerHTML='<b>Step '+si+'</b>: '+step.narration+healthMsg;
+      speakText(step.narration||'','reflection',true);
+      si++;
+      setTimeout(playStep,1600)
+    };
+    playStep()
+  }catch(e){}
+};
+
+$('#legacyTimelineExportBtn').onclick=async()=>{
+  try{
+    const r=await fetch(API+'/contributor-legacy');const d=await r.json();
+    if(!d.legacy||!d.legacy.length){addControl('No legacy data to export');return}
+    let html='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Contributor Timeline Report</title><style>body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;padding:16px;max-width:700px;margin:0 auto}h1{color:#89b4fa;font-size:18px}.user{margin:8px 0;padding:6px;background:#181825;border-radius:6px}.usr{color:#89b4fa;font-weight:600}.badge{color:#f9e2af}.evt{color:#a6adc8;font-size:12px;margin:1px 0}.peak{color:#a6e3a1;font-size:12px}hr{border-color:#45475a}</style></head><body><h1>\U0001F4CA Contributor Timeline Report</h1><hr>';
+    d.legacy.forEach(u=>{
+      html+='<div class="user"><div class="usr">'+u.user_id+'</div><div class="evt">Events: '+u.total_events+' | Badges: '+u.badge_count+'</div>';
+      if(u.badges&&u.badges.length)u.badges.forEach(b=>{html+='<div class="badge">\u2B50 '+b.name+' ('+(b.timestamp||'').slice(0,10)+')</div>'});
+      if(u.drift_timeline&&u.drift_timeline.length){
+        html+='<div style="font-size:11px;color:var(--text3);margin:4px 0">Drift timeline:</div>';
+        u.drift_timeline.slice(-10).forEach(e=>{html+='<div class="evt">'+e.action+' @ weights '+JSON.stringify(e.weights||{})+'</div>'})
+      }
+      ['mentor','coach','teacher'].forEach(p=>{
+        const dt=u.drift_timeline||[];
+        const vals=dt.map((e,i)=>({i,w:e.weights&&e.weights[p]||0})).filter(v=>v.w>0);
+        if(vals.length){const peak=vals.reduce((a,b)=>a.w>b.w?a:b);html+='<div class="peak">\u2191 '+p+' peak: '+peak.w+'</div>'}
+      });
+      html+='</div>'
+    });
+    html+='<hr><div style="color:#6c7086;font-size:11px">Generated by youfeel</div></body></html>';
+    const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='contributor-timeline-'+new Date().toISOString().slice(0,10)+'.html';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    addControl('Timeline report exported');speakText('Contributor timeline report exported as HTML','reflection')
+  }catch(e){}
+};
+
 p.onchange=()=>{persona=p.value};
 s.onclick=()=>{
   const t=i.value.trim();
@@ -309,6 +418,7 @@ async function loadDrift(){
   const canvas=$('#driftCanvas'),legend=$('#driftLegend'),inf=$('#driftInfluence');
   canvas.style.display='none';legend.innerHTML='';inf.innerHTML='Loading...';
   drawWeightDelta($('#weightDeltaCanvas'));
+  drawInfluenceChart($('#influenceChart'));
   try{
     const r=await fetch(API+'/persona-drift');const d=await r.json();
     if(!d.timeline.length){inf.innerHTML='No drift data yet. Sync, chat, or simulate to generate events.';return}
@@ -495,6 +605,30 @@ $('#dashNarrBtn').onclick=()=>{dashNarrate=!dashNarrate;$('#dashNarrBtn').style.
 $('#covBtn').onclick=async()=>{
   const c=$('#covCanvasDash');
   try{const r=await fetch(API+'/coverage-history');const d=await r.json();drawCovChart(c,d.coverage_history)}catch(e){}
+};
+$('#healthBtnDash').onclick=async()=>{
+  const panel=$('#healthPanelDash');
+  try{
+    const r=await fetch(API+'/confidence-health');const d=await r.json();
+    if(d.status==='insufficient_data'){panel.innerHTML='Insufficient confidence data for health analysis.';panel.style.display='block';return}
+    panel.style.display='block';
+    const ov=d.overall||{};
+    const trend=d.trend||'stable';
+    const trendEmoji=trend==='improving'?'\u2197':trend==='declining'?'\u2198':'\u2192';
+    const statusColor=ov.status==='stable'?'var(--green)':ov.status==='volatile'?'var(--red)':'var(--yellow)';
+    let html='<b style="color:var(--text)">Confidence Health</b><div style="margin:4px 0;display:flex;gap:6px;flex-wrap:wrap">';
+    html+='<span>Avg: <b>'+ov.avg+'%</b></span><span>Spread: <b style="color:'+statusColor+'">'+ov.spread+'</b></span><span>Healthy: <b style="color:var(--green)">'+(ov.healthy_ratio*100)+'%</b></span><span>Trend: <b>'+trendEmoji+' '+trend+'</b></span><span>Status: <b style="color:'+statusColor+'">'+ov.status+'</b></span></div>';
+    html+='<div style="font-size:8px;color:var(--text3);margin:2px 0">Based on '+ov.total_interactions+' recent interactions</div>';
+    if(d.sessions&&d.sessions.length){
+      html+='<div style="margin:4px 0;font-size:8px;color:var(--text3)">Per-session breakdown:</div>';
+      d.sessions.forEach(s=>{
+        const sc=s.status==='stable'?'var(--green)':s.status==='volatile'?'var(--red)':'var(--yellow)';
+        html+='<div style="display:flex;gap:4px;font-size:8px;color:var(--text2);margin:1px 0"><span>Window '+s.window+':</span><span>avg '+s.avg+'</span><span style="color:'+sc+'">spread '+s.spread+'</span><span>healthy '+(s.healthy_ratio*100)+'%</span></div>'
+      })
+    }
+    panel.innerHTML=html;
+    speakText('Confidence health: '+ov.status+', average '+ov.avg+' percent, trend '+trend,'reflection')
+  }catch(e){panel.innerHTML='Error loading health data';panel.style.display='block'}
 };
 
 function drawCovChart(canvas, history){

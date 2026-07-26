@@ -1348,6 +1348,59 @@ async def persona_influence():
     return {"influence": dict(cumulative), "total": sum(cumulative.values())}
 
 
+@app.get("/api/influence-history")
+async def influence_history():
+    history = []
+    cumulative = defaultdict(int)
+    for e in PERSONA_DRIFT_LOG:
+        if e.get("weights"):
+            for p, v in e["weights"].items():
+                cumulative[p] += v * 0.5
+        history.append({
+            "timestamp": e.get("timestamp", ""),
+            "cumulative": dict(cumulative),
+            "total": sum(cumulative.values()),
+        })
+    return {"history": history[-50:]}
+
+
+@app.get("/api/confidence-health")
+async def confidence_health():
+    if len(RECENT_SCORES) < 3:
+        return {"status": "insufficient_data", "sessions": []}
+    recent = RECENT_SCORES[-30:]
+    sessions = []
+    window = 5
+    for i in range(0, len(recent), window):
+        chunk = recent[i:i+window]
+        if len(chunk) < 3:
+            continue
+        avg = round(sum(chunk) / len(chunk), 1)
+        spread = round(max(chunk) - min(chunk), 1)
+        healthy = sum(1 for s in chunk if s >= 70)
+        sessions.append({
+            "window": f"{i}-{i+len(chunk)-1}",
+            "avg": avg,
+            "spread": spread,
+            "healthy_ratio": round(healthy / len(chunk), 2),
+            "status": "stable" if spread <= 10 else "volatile" if spread > 25 else "moderate",
+        })
+    overall_spread = round(max(recent) - min(recent), 1)
+    overall_avg = round(sum(recent) / len(recent), 1)
+    overall_healthy = sum(1 for s in recent if s >= 70)
+    return {
+        "sessions": sessions,
+        "overall": {
+            "avg": overall_avg,
+            "spread": overall_spread,
+            "healthy_ratio": round(overall_healthy / len(recent), 2),
+            "total_interactions": len(recent),
+            "status": "stable" if overall_spread <= 10 else "volatile" if overall_spread > 25 else "moderate",
+        },
+        "trend": "improving" if len(sessions) >= 2 and sessions[-1]["avg"] > sessions[0]["avg"] else "declining" if len(sessions) >= 2 and sessions[-1]["avg"] < sessions[0]["avg"] else "stable",
+    }
+
+
 @app.get("/api/session-replay/export")
 async def session_replay_export():
     story_resp = await orchestration_story()
