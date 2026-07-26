@@ -1247,6 +1247,18 @@ async def session_replay():
     story_resp = await orchestration_story()
     weight_data = WEIGHT_HISTORY[-50:]
     score_history = RECENT_SCORES[-20:]
+    steps = []
+    for i, w in enumerate(weight_data):
+        step = {"index": i, "weights": w.get("weights", {}), "boost": w.get("boost", {}), "confidence": score_history[i] if i < len(score_history) else None}
+        parts = []
+        if w.get("boost", {}).get("changed"):
+            b = w["boost"]
+            parts.append(f"{b['persona']} boosted +{b['boost']} ({b['reason']})")
+        step_narration = ". ".join(parts) if parts else f"Step {i}: weights {json.dumps(w.get('weights',{}))}"
+        if i < len(score_history) and score_history[i] is not None:
+            step_narration += f", confidence {score_history[i]}"
+        step["narration"] = step_narration
+        steps.append(step)
     return {
         "narration": story_resp["narration"],
         "chapters": story_resp["chapters"],
@@ -1254,6 +1266,7 @@ async def session_replay():
         "weight_history": weight_data,
         "score_history": score_history,
         "badge_history": BADGE_HISTORY[-20:],
+        "steps": steps,
     }
 
 
@@ -1298,6 +1311,28 @@ async def contributor_legacy_narration():
             if boosts:
                 parts.append("influenced " + ", ".join(boosts))
         sentences.append(f"{u['user_id']}: " + ", ".join(parts) + ".")
+        dt = u.get("drift_timeline", [])
+        if len(dt) >= 3:
+            for p in ("mentor", "coach", "teacher"):
+                vals = [(i, e.get("weights", {}).get(p, 0)) for i, e in enumerate(dt) if e.get("weights", {}).get(p, 0) > 0]
+                if vals:
+                    peak = max(vals, key=lambda x: x[1])
+                    if peak[1] >= 15:
+                        when = dt[peak[0]].get("timestamp", "")
+                        date_str = when[:10] if when else ""
+                        peak_msg = f"{p} peaked at {peak[1]}"
+                        if date_str:
+                            peak_msg += f" around {date_str}"
+                        bt = u.get("badge_timeline", [])
+                        near_badge = [b for b in bt if abs(datetime.fromisoformat(b["timestamp"].replace("Z","")) - datetime.fromisoformat(when.replace("Z",""))).days <= 3 if when and b.get("timestamp")]
+                        if near_badge:
+                            peak_msg += f", earning {near_badge[0]['name']}"
+                        sentences.append(f"For {u['user_id']}, " + peak_msg + ".")
+        bt = u.get("badge_timeline", [])
+        if bt:
+            for b in bt:
+                bd = b.get("timestamp", "")[:10]
+                sentences.append(f"{u['user_id']} earned {b['name']} on {bd}.")
     narration = "Contributor legacy. " + " ".join(sentences)
     emotion = "encouragement" if any(u["badge_count"] > 0 for u in data.get("legacy", [])) else "reflection"
     return {"narration": narration, "emotion": emotion}

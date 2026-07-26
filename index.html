@@ -106,6 +106,12 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
       <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
       <canvas id="replayCanvas" style="display:none;width:100%;height:100px;border-radius:var(--radius-sm);background:var(--surface2);margin:4px 0"></canvas>
+      <div id="replaySliderRow" style="display:none;margin:2px 0;gap:6px;align-items:center;flex-wrap:wrap">
+        <input type="range" id="replaySlider" min="0" max="100" value="0" style="flex:1;height:4px;accent-color:var(--blue)">
+        <span id="replayStepLabel" style="font-size:9px;color:var(--text3);min-width:30px">0/0</span>
+        <button class="btn" id="replayPlayBtn" style="background:var(--blue);color:var(--bg);font-size:9px;padding:2px 6px">▶️</button>
+      </div>
+      <div id="replayStepNarration" style="display:none;font-size:9px;color:var(--text2);padding:3px 4px;background:var(--surface);border-radius:var(--radius-sm);margin:2px 0;min-height:18px"></div>
       <div id="badgeTimelinePanel" style="display:none;font-size:9px;color:var(--text2);max-height:120px;overflow-y:auto;margin:4px 0;padding:4px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
       <hr style="border-color:var(--surface3);margin:8px 0">
       <div id="leaderboardPanel" class="stat" style="font-size:9px;min-height:30px">Leaderboard loading...</div>
@@ -382,6 +388,7 @@ function drawWeightDelta(canvas){
       const personas=['mentor','coach','teacher'];
       const colors=['#89b4fa','#a6e3a1','#f9e2af'];
       const maxV=100;
+      drawHealthBands(ctx,pad,W,H,cw,ch,scores);
       ctx.strokeStyle='#45475a';ctx.lineWidth=0.5;ctx.font='6px sans-serif';
       for(let i=0;i<=4;i++){
         const y=pad.t+ch-(i/4*ch),v=Math.round(i/4*maxV);
@@ -416,6 +423,8 @@ function drawWeightDelta(canvas){
         ctx.fillStyle='rgba(243,139,168,0.6)';ctx.fillRect(pad.l+132,pad.t-6,6,4);
         ctx.fillStyle='var(--text3)';ctx.fillText('confidence',pad.l+140,pad.t-2)
       }
+      ctx.fillStyle='rgba(166,227,161,0.2)';ctx.fillRect(pad.l+180,pad.t-6,6,4);
+      ctx.fillStyle='var(--text3)';ctx.fillText('healthy',pad.l+188,pad.t-2)
     })
   }catch(e){canvas.style.display='none'}
 }
@@ -579,7 +588,7 @@ $('#narrateContribBtn').onclick=async()=>{
   try{const r=await fetch(API+'/contributor-narration');const d=await r.json();addControl('Contributors: '+d.narration);speakText(d.narration,'encouragement')}catch(e){}
 };
 
-function drawReplayChart(canvas,data){
+function drawReplayChart(canvas,data,highlightIdx){
   try{
     const h=data.weight_history||[];
     const scores=data.score_history||[];
@@ -589,8 +598,9 @@ function drawReplayChart(canvas,data){
     const W=canvas.parentElement.clientWidth-4||280,H=100;
     canvas.width=W*2;canvas.height=H*2;canvas.style.width=W+'px';canvas.style.height=H+'px';
     ctx.scale(2,2);
-    const pad={t:10,b:16,l:24,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+    const pad={t:10,b:22,l:24,r:8},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
     ctx.clearRect(0,0,W,H);
+    drawHealthBands(ctx,pad,W,H,cw,ch,scores);
     ctx.fillStyle='var(--text3)';ctx.textAlign='center';ctx.font='6px sans-serif';
     ctx.fillText('Weights + Confidence',pad.l+cw/2,6);
     const personas=['mentor','coach','teacher'];
@@ -621,12 +631,26 @@ function drawReplayChart(canvas,data){
         i===0?ctx.moveTo(x,y2):ctx.lineTo(x,y2)
       });ctx.stroke();ctx.setLineDash([])
     }
+    if(highlightIdx!==undefined&&h.length>=2){
+      const hx=pad.l+(highlightIdx/(h.length-1))*cw;
+      ctx.beginPath();ctx.moveTo(hx,pad.t);ctx.lineTo(hx,pad.t+ch);
+      ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=1;ctx.setLineDash([2,2]);ctx.stroke();ctx.setLineDash([])
+    }
     ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.font='5px sans-serif';
     ctx.fillStyle='#89b4fa';ctx.fillRect(pad.l,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('mentor',pad.l+8,pad.t+ch+5);
     ctx.fillStyle='#a6e3a1';ctx.fillRect(pad.l+40,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('coach',pad.l+48,pad.t+ch+5);
     ctx.fillStyle='#f9e2af';ctx.fillRect(pad.l+80,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('teacher',pad.l+88,pad.t+ch+5);
-    ctx.fillStyle='rgba(243,139,168,0.6)';ctx.fillRect(pad.l+130,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('confidence',pad.l+138,pad.t+ch+5)
+    ctx.fillStyle='rgba(243,139,168,0.6)';ctx.fillRect(pad.l+130,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('confidence',pad.l+138,pad.t+ch+5);
+    ctx.fillStyle='rgba(166,227,161,0.2)';ctx.fillRect(pad.l+170,pad.t+ch+2,6,3);ctx.fillStyle='var(--text3)';ctx.fillText('healthy',pad.l+178,pad.t+ch+5)
   }catch(e){canvas.style.display='none'}
+}
+
+function drawHealthBands(ctx,pad,W,H,cw,ch,scores){
+  const zones=[{lo:70,hi:100,color:'rgba(166,227,161,0.08)'},{lo:50,hi:70,color:'rgba(249,226,175,0.08)'},{lo:0,hi:50,color:'rgba(243,139,168,0.08)'}];
+  zones.forEach(z=>{
+    const y0=pad.t+ch-(z.hi/100*ch),yh=pad.t+ch-(z.lo/100*ch);
+    ctx.fillStyle=z.color;ctx.fillRect(pad.l,y0,cw,yh-y0)
+  })
 }
 
 function pulseAvatar(persona){
@@ -668,14 +692,45 @@ function drawContributorChart(canvas,u){
   }catch(e){canvas.style.display='none'}
 }
 
+let replayData=null,replayPlaying=0,replayTimer=null;
 $('#sessionReplayBtn').onclick=async()=>{
   try{
     const r=await fetch(API+'/session-replay');const d=await r.json();
+    replayData=d;
+    const steps=d.steps||[];
     $('#storyPanel').innerHTML='<b>Session Replay</b><div style="margin-top:4px">'+d.chapters.map((c,i)=>'<div style="margin:2px 0;line-height:1.4">'+(i+1)+'. '+c+'</div>').join('')+'</div>';
     addControl('Replay: '+d.narration);speakText(d.narration,d.emotion||'encouragement');
     const boosts=d.weight_history&&d.weight_history.filter(w=>w.boost&&w.boost.changed);
     if(boosts&&boosts.length)setTimeout(()=>{pulseAvatar(boosts[boosts.length-1].boost.persona||'coach')},500);
-    drawReplayChart($('#replayCanvas'),d)
+    drawReplayChart($('#replayCanvas'),d);
+    if(steps.length>=2){
+      const slider=$('#replaySlider'),row=$('#replaySliderRow'),label=$('#replayStepLabel'),stepNarr=$('#replayStepNarration');
+      slider.max=steps.length-1;slider.value=0;
+      label.textContent='0/'+(steps.length-1);
+      row.style.display='flex';stepNarr.style.display='block';
+      stepNarr.textContent=steps[0].narration||'Step 0';
+      slider.oninput=()=>{
+        if(replayPlaying){replayPlaying=0;if(replayTimer){clearInterval(replayTimer);replayTimer=null}$('#replayPlayBtn').textContent='▶️'}
+        const idx=parseInt(slider.value);
+        label.textContent=idx+'/'+(steps.length-1);
+        stepNarr.textContent=steps[idx].narration||'Step '+idx;
+        drawReplayChart($('#replayCanvas'),d,idx);
+        const step=steps[idx];
+        if(step.boost&&step.boost.changed)pulseAvatar(step.boost.persona||'coach')
+      };
+      $('#replayPlayBtn').onclick=()=>{
+        if(replayPlaying){replayPlaying=0;if(replayTimer){clearInterval(replayTimer);replayTimer=null}$('#replayPlayBtn').textContent='▶️';return}
+        replayPlaying=1;$('#replayPlayBtn').textContent='⏸';
+        let si=parseInt(slider.value);
+        replayTimer=setInterval(()=>{
+          if(si>=steps.length-1){replayPlaying=0;clearInterval(replayTimer);replayTimer=null;$('#replayPlayBtn').textContent='▶️';return}
+          si++;slider.value=si;slider.oninput();
+          const step=steps[si];
+          if(step.boost&&step.boost.changed)pulseAvatar(step.boost.persona||'coach');
+          speakText(step.narration||'','reflection',true)
+        },1200)
+      }
+    }
   }catch(e){}
 };
 $('#legacyBtn').onclick=async()=>{
@@ -750,18 +805,42 @@ function animateDriftLines(canvas,data,stepCb){
       ctx.fillStyle=colors[pi];ctx.fillRect(pad.l+pi*44,pad.t-6,6,4);
       ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.fillText(p,pad.l+pi*44+8,pad.t-2)
     });
-    if(stepCb&&visible.length)stepCb(visible[visible.length-1],step);
+    if(stepCb&&visible.length)stepCb(visible[visible.length-1],step,h,scores);
     step++;
     if(step>h.length){clearInterval(animDriftInterval);animDriftInterval=null}
-  },400)
+  },700)
 }
 $('#animateDriftBtn').onclick=async()=>{
   try{
     const canvas=$('#driftCanvas');canvas.style.display='block';
     const r=await fetch(API+'/weight-history');const d=await r.json();
     if((d.history||[]).length<2){$('#driftInfluence').innerHTML='Not enough data to animate';return}
-    animateDriftLines(canvas,d,(last,stp)=>{
-      if(last&&last.boost&&last.boost.changed)pulseAvatar(last.boost.persona||'coach')
+    let lastNarr='';
+    animateDriftLines(canvas,d,(last,stp,h,scores)=>{
+      if(last&&last.boost&&last.boost.changed)pulseAvatar(last.boost.persona||'coach');
+      const parts=[];
+      if(last&&last.weights){
+        const ps=['mentor','coach','teacher'];
+        ps.forEach(p=>{
+          const w=last.weights[p];
+          if(stp>=2&&h[stp-2]&&h[stp-2].weights){
+            const prevW=h[stp-2].weights[p]||0;
+            const diff=Math.round((w||0)-prevW);
+            if(Math.abs(diff)>=5)parts.push(p+' '+(diff>0?'+'+diff:diff))
+          }
+        })
+      }
+      if(stp>0&&stp<=scores.length){
+        const sc=scores[stp-1];
+        if(stp>=2&&scores[stp-2]!==undefined){
+          const scDiff=Math.round(sc-scores[stp-2]);
+          if(Math.abs(scDiff)>=5)parts.push('confidence '+(scDiff>0?'+'+scDiff:scDiff))
+        }
+      }
+      if(parts.length){
+        const msg='Drift step '+stp+': '+parts.join(', ');
+        if(msg!==lastNarr){addControl(msg);speakText(msg,'reflection',true);lastNarr=msg}
+      }
     })
   }catch(e){}
 };
