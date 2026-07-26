@@ -1385,11 +1385,27 @@ async def confidence_health():
             "healthy_ratio": round(healthy / len(chunk), 2),
             "status": "stable" if spread <= 10 else "volatile" if spread > 25 else "moderate",
         })
+    comparisons = []
+    for i in range(1, len(sessions)):
+        prev = sessions[i-1]
+        cur = sessions[i]
+        comparisons.append({
+            "from_window": prev["window"],
+            "to_window": cur["window"],
+            "avg_delta": round(cur["avg"] - prev["avg"], 1),
+            "spread_delta": round(cur["spread"] - prev["spread"], 1),
+            "healthy_delta": round(cur["healthy_ratio"] - prev["healthy_ratio"], 2),
+        })
     overall_spread = round(max(recent) - min(recent), 1)
     overall_avg = round(sum(recent) / len(recent), 1)
     overall_healthy = sum(1 for s in recent if s >= 70)
+    first_avg = sessions[0]["avg"] if sessions else None
+    last_avg = sessions[-1]["avg"] if sessions else None
+    overall_delta = round(last_avg - first_avg, 1) if first_avg is not None and last_avg is not None else None
     return {
         "sessions": sessions,
+        "comparisons": comparisons,
+        "overall_delta": overall_delta,
         "overall": {
             "avg": overall_avg,
             "spread": overall_spread,

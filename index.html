@@ -103,7 +103,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
   </div>
   <div class="tab-content" id="tab-story">
     <div class="panel-scroll">
-      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="cinematicReplayBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎬 Cinematic</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button><button class="btn" id="legacyExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📥 Legacy Export</button><button class="btn" id="legacyTimelineExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📊 Timeline Export</button></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn" id="storyBtnTab" style="background:var(--blue);color:var(--bg);font-size:11px">🔊 Narrate</button><button class="btn" id="orchStoryBtn" style="background:var(--yellow);color:var(--bg);font-size:11px">🎼 Orchestration</button><button class="btn" id="sessionReplayBtn" style="background:var(--green);color:var(--bg);font-size:11px">🔁 Replay</button><button class="btn" id="cinematicReplayBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎬 Cinematic</button><button class="btn" id="exportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">💾 Export</button><button class="btn" id="impactNarrBtnTab" style="background:var(--surface3);color:var(--text);font-size:11px">🏅 Impact</button><button class="btn" id="badgeNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎖️ Badges</button><button class="btn" id="badgeTimelineBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📅 Timeline</button><button class="btn" id="legacyBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📜 Legacy</button><button class="btn" id="legacyNarrBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🗣️ Legacy Narr</button><button class="btn" id="legacyExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📥 Legacy Export</button><button class="btn" id="legacyTimelineExportBtn" style="background:var(--surface3);color:var(--text);font-size:11px">📊 Timeline Export</button><button class="btn" id="contributorVideoBtn" style="background:var(--surface3);color:var(--text);font-size:11px">🎥 Contributor Video</button></div>
       <div id="storyPanel" class="stat">Tap "Narrate" for a full story — drift, leaderboard, simulation, and contributor highlights.</div>
       <canvas id="replayCanvas" style="display:none;width:100%;height:100px;border-radius:var(--radius-sm);background:var(--surface2);margin:4px 0"></canvas>
       <div id="replaySliderRow" style="display:none;margin:2px 0;gap:6px;align-items:center;flex-wrap:wrap">
@@ -313,12 +313,24 @@ function drawInfluenceChart(canvas){
         ctx.fillStyle='var(--text3)';ctx.textAlign='left';ctx.fillText(p,pad.l+pi*44+8,pad.t-2)
       });
       const milestones=[];
-      personas.forEach(p=>{
+      const milestoneThresholds=[10,20,30,40,50];
+      personas.forEach((p,pi)=>{
         const vals=h.map((pt,i)=>({i,v:pt.cumulative[p]||0})).filter(x=>x.v>0);
-        const milestonesFound=[10,20,30,40,50].filter(m=>vals.some(x=>x.v>=m)&&!vals.some(x=>x.v>=m+10));
-        milestonesFound.forEach(m=>{
+        const found=milestoneThresholds.filter(m=>vals.some(x=>x.v>=m)&&!vals.some(x=>x.v>=m+10));
+        found.forEach(m=>{
           const at=vals.find(x=>x.v>=m);
-          if(at)milestones.push(p+' reached '+m+' at step '+at.i)
+          if(at){
+            milestones.push(p+' reached '+m+' at step '+at.i);
+            const x=pad.l+(at.i/(h.length-1))*cw;
+            const y=pad.t+ch-(at.v/maxTotal*ch);
+            ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
+            ctx.fillStyle=colors[pi];ctx.globalAlpha=.4;ctx.fill();
+            ctx.globalAlpha=1;ctx.strokeStyle=colors[pi];ctx.lineWidth=1.5;ctx.stroke();
+            ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);
+            ctx.strokeStyle=colors[pi];ctx.globalAlpha=.15;ctx.lineWidth=2;ctx.stroke();ctx.globalAlpha=1;
+            ctx.fillStyle='var(--text)';ctx.font='5px sans-serif';ctx.textAlign='center';
+            ctx.fillText(m,x+8,y-4)
+          }
         })
       });
       if(milestones.length){
@@ -333,9 +345,27 @@ function generateReplayHTML(d){
   const steps=d.steps||[];
   const chapters=d.chapters||[];
   const narration=d.narration||'';
-  let stepHTML=steps.map(s=>'<div class="step" data-idx="'+s.index+'"><b>Step '+s.index+'</b>: '+s.narration+'</div>').join('');
-  const speechJS='<script>window.addEventListener("DOMContentLoaded",()=>{let si=0;const steps=document.querySelectorAll(".step");const synth=window.speechSynthesis;const speak=(t)=>{synth.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=0.9;synth.speak(u)};speak("'+narration.replace(/"/g,'&quot;')+'");const iv=setInterval(()=>{if(si>=steps.length){clearInterval(iv);return}steps[si].style.borderLeft="3px solid #89b4fa";const t=steps[si].textContent;speak(t);si++},2200)})<\/script>';
-  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>youfeel Replay Storyboard</title><style>body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;padding:16px;max-width:600px;margin:0 auto}h1{color:#89b4fa;font-size:18px}.ch{color:#a6adc8;margin:6px 0;padding:6px;background:#181825;border-radius:6px}.step{margin:3px 0;padding:4px 4px 4px 8px;background:#313244;border-radius:4px;font-size:13px;line-height:1.4;border-left:3px solid transparent;transition:border-color .3s}hr{border-color:#45475a;margin:12px 0}.note{color:#6c7086;font-size:10px}</style></head><body><h1>\U0001F3A5 youfeel Replay Storyboard</h1><p class="note">Audio narration will play automatically. Each step highlights as it is spoken.</p><hr>'+chapters.map((c,i)=>'<div class="ch">'+(i+1)+'. '+c+'</div>').join('')+'<hr><h2 style="color:#a6e3a1;font-size:14px">Timeline</h2>'+stepHTML+'<hr><div class="note">Generated by youfeel</div>'+speechJS+'</body></html>'
+  const total=steps.length;
+  let stepHTML=steps.map(s=>'<div class="step" data-idx="'+s.index+'"><div class="step-num">Step '+s.index+'</div><div class="step-text">'+s.narration+'</div></div>').join('');
+  const speechJS='<script>window.addEventListener("DOMContentLoaded",()=>{let si=0;const steps=document.querySelectorAll(".step");const bar=document.getElementById("progressBar");const counter=document.getElementById("stepCounter");const cinStep=document.getElementById("cinStep");const synth=window.speechSynthesis;const speak=(t)=>{synth.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=0.9;synth.speak(u)};const updateUI=()=>{steps.forEach((el,i)=>{el.classList.toggle("active",i===si);if(i===si)el.scrollIntoView({behavior:"smooth",block:"center"})});if(bar)bar.style.width=((si+1)/steps.length*100)+"%";if(counter)counter.textContent="Step "+(si+1)+"/"+steps.length;if(cinStep&&steps[si])cinStep.textContent=steps[si].textContent};speak("'+narration.replace(/"/g,'&quot;')+'");const iv=setInterval(()=>{if(si>=steps.length){clearInterval(iv);if(counter)counter.textContent="Complete";if(bar)bar.style.background="#a6e3a1";return}updateUI();const t=steps[si].textContent;speak(t);si++},2200)})<\/script>';
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>youfeel Replay Video</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;min-height:100vh}.player{position:sticky;top:0;background:#11111b;padding:8px 12px;z-index:10;border-bottom:1px solid #45475a;display:flex;flex-direction:column;gap:4px}.player-bar{display:flex;align-items:center;gap:8px}.progress-track{flex:1;height:4px;background:#313244;border-radius:2px;overflow:hidden}.progress-fill{height:100%;background:#89b4fa;width:0%;transition:width .3s;border-radius:2px}#stepCounter{font-size:11px;color:#a6adc8;min-width:70px}#cinStep{font-size:10px;color:#6c7086;padding:2px 0;min-height:16px;line-height:1.3}.content{padding:12px;max-width:600px;margin:0 auto}h1{color:#89b4fa;font-size:16px;margin-bottom:8px}.ch{color:#a6adc8;margin:4px 0;padding:4px 6px;background:#181825;border-radius:4px;font-size:12px}.step{display:flex;gap:6px;margin:3px 0;padding:6px;background:#313244;border-radius:4px;font-size:13px;line-height:1.4;border-left:3px solid transparent;transition:all .3s}.step.active{border-left-color:#89b4fa;background:#45475a;box-shadow:0 0 8px rgba(137,180,250,.2)}.step-num{font-weight:600;color:#89b4fa;min-width:54px;font-size:11px}.step-text{color:#cdd6f4}.note{color:#6c7086;font-size:10px;text-align:center;padding:8px}h2{color:#a6e3a1;font-size:13px;margin:8px 0 4px}hr{border-color:#45475a;margin:8px 0}</style></head><body><div class="player"><div class="player-bar"><div class="progress-track"><div class="progress-fill" id="progressBar"></div></div><span id="stepCounter">Step 1/'+total+'</span></div><div id="cinStep"></div></div><div class="content"><h1>\u25B6 youfeel Replay</h1><p class="note">Audio narration plays automatically. Steps auto-advance.</p><hr>'+chapters.map((c,i)=>'<div class="ch">'+(i+1)+'. '+c+'</div>').join('')+'<hr><h2>Timeline</h2>'+stepHTML+'<hr><div class="note">Generated by youfeel</div></div>'+speechJS+'</body></html>'
+}
+
+function generateContributorVideoHTML(d,dn){
+  let html='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contributor Timeline Video</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;min-height:100vh}.player{position:sticky;top:0;background:#11111b;padding:8px 12px;z-index:10;border-bottom:1px solid #45475a;display:flex;align-items:center;gap:8px}.progress-track{flex:1;height:4px;background:#313244;border-radius:2px;overflow:hidden}.progress-fill{height:100%;background:#89b4fa;width:0%;transition:width .3s}.content{padding:12px;max-width:600px;margin:0 auto}h1{color:#89b4fa;font-size:16px}.user{margin:6px 0;padding:6px;background:#181825;border-radius:6px}.usr{color:#89b4fa;font-weight:600}.badge{color:#f9e2af;font-size:12px;margin:1px 0}.peak{color:#a6e3a1;font-size:12px}.note{color:#6c7086;font-size:10px}hr{border-color:#45475a;margin:8px 0}</style></head><body><div class="player"><div class="progress-track"><div class="progress-fill" id="progressBar"></div></div><span id="stepCounter" style="font-size:11px;color:#a6adc8;min-width:70px">Loading...</span></div><div class="content"><h1>\U0001F4C0 Contributor Timeline</h1><p class="note">Audio narration plays automatically.</p><hr>';
+  d.legacy.forEach(u=>{
+    html+='<div class="user" data-user="'+u.user_id+'"><div class="usr">'+u.user_id+'</div><div>Events: '+u.total_events+' | Badges: '+u.badge_count+'</div>';
+    if(u.badges&&u.badges.length)u.badges.forEach(b=>{html+='<div class="badge">\u2B50 '+b.name+' ('+(b.timestamp||'').slice(0,10)+')</div>'});
+    ['mentor','coach','teacher'].forEach(p=>{
+      const dt=u.drift_timeline||[];const vals=dt.map((e,i)=>({i,w:e.weights&&e.weights[p]||0})).filter(v=>v.w>0);
+      if(vals.length){const peak=vals.reduce((a,b)=>a.w>b.w?a:b);html+='<div class="peak">\u2191 '+p+' peak: '+peak.w+'</div>'}
+    });
+    html+='</div>'
+  });
+  const narr=dn.narration||'';
+  const speechJS='<script>window.addEventListener("DOMContentLoaded",()=>{const synth=window.speechSynthesis;const bar=document.getElementById("progressBar");const counter=document.getElementById("stepCounter");const users=document.querySelectorAll(".user");let ui=0;const speak=(t)=>{synth.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=0.9;synth.speak(u)};speak("'+narr.replace(/"/g,'&quot;')+'");if(counter)counter.textContent="1/"+users.length;const iv=setInterval(()=>{if(ui>=users.length){clearInterval(iv);if(counter)counter.textContent="Complete";if(bar)bar.style.background="#a6e3a1";return}users.forEach((el,i)=>{el.style.borderLeft=i===ui?"3px solid #89b4fa":"3px solid transparent"});if(bar)bar.style.width=((ui+1)/users.length*100)+"%";if(counter)counter.textContent=(ui+1)+"/"+users.length;const t=users[ui]&&users[ui].textContent;if(t)speak(t);ui++},3000)})<\/script>';
+  html+='<hr><div class="note">Generated by youfeel</div>'+speechJS+'</body></html>';
+  return html
 }
 
 $('#cinematicReplayBtn').onclick=async()=>{
@@ -408,6 +438,19 @@ $('#legacyTimelineExportBtn').onclick=async()=>{
     const a=document.createElement('a');a.href=url;a.download='contributor-timeline-'+new Date().toISOString().slice(0,10)+'.html';
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
     addControl('Timeline report exported: '+narr);speakText(narr,dn.emotion||'encouragement')
+  }catch(e){}
+};
+
+$('#contributorVideoBtn').onclick=async()=>{
+  try{
+    const [rd,rn]=await Promise.all([fetch(API+'/contributor-legacy'),fetch(API+'/contributor-legacy-narration')]);
+    const d=await rd.json();const dn=await rn.json();
+    if(!d.legacy||!d.legacy.length){addControl('No contributor data for video');return}
+    const html=generateContributorVideoHTML(d,dn);
+    const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='contributor-video-'+new Date().toISOString().slice(0,10)+'.html';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    addControl('Contributor video exported: '+dn.narration);speakText(dn.narration,dn.emotion||'encouragement')
   }catch(e){}
 };
 
@@ -656,8 +699,22 @@ $('#healthBtnDash').onclick=async()=>{
       })
     }
     panel.innerHTML=html;
+    const comps=d.comparisons||[];
+    let compHtml='';
+    if(comps.length){
+      compHtml='<div style="margin:4px 0;font-size:8px;color:var(--text3)">Session comparisons:</div>';
+      comps.forEach(c=>{
+        const arrow=c.avg_delta>=0?'\u2197':'\u2198';
+        const clr=c.avg_delta>=0?'var(--green)':'var(--red)';
+        compHtml+='<div style="display:flex;gap:4px;font-size:8px;color:var(--text2);margin:1px 0"><span>'+c.from_window+' \u2192 '+c.to_window+':</span><span style="color:'+clr+'">'+arrow+' '+c.avg_delta+'% avg</span><span>spread '+(c.spread_delta>=0?'+'+c.spread_delta:c.spread_delta)+'</span></div>'
+      })
+    }
+    panel.innerHTML=html+compHtml;
     const trendMsg=trend==='improving'?'Confidence improving steadily across last '+d.sessions.length+' sessions':trend==='declining'?'Confidence declining, averaging '+ov.avg+' percent':trend==='stable'?'Confidence stable at '+ov.avg+' percent over '+d.sessions.length+' sessions':'';
-    const trendNarrations=[trendMsg,'Overall status is '+ov.status+'. Average confidence '+ov.avg+' percent with a spread of '+ov.spread+'. Healthy ratio '+(ov.healthy_ratio*100)+' percent.'].filter(Boolean).join('. ');
+    const compParts=comps.filter(c=>Math.abs(c.avg_delta)>=5).map(c=>'Session '+c.to_window+' changed by '+c.avg_delta+'% compared to previous');
+    const overallDelta=d.overall_delta;
+    const deltaPart=overallDelta!==null&&Math.abs(overallDelta)>=3?'Overall confidence '+(overallDelta>0?'improved ':'dropped ')+Math.abs(overallDelta)+'% compared to earlier sessions':'';
+    const trendNarrations=[trendMsg,deltaPart,...compParts].filter(Boolean).join('. ');
     if(trendNarrations){addControl('Health: '+trendNarrations);speakText(trendNarrations,trend==='improving'?'joy':trend==='declining'?'empathy':'reflection')}
   }catch(e){panel.innerHTML='Error loading health data';panel.style.display='block'}
 };
