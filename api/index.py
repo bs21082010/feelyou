@@ -5,6 +5,7 @@ import hashlib
 import urllib.request
 import urllib.error
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 from datetime import datetime, timedelta
 from collections import Counter, defaultdict
@@ -439,15 +440,15 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
         headers["X-Title"] = "FeelYou Emotional AI"
     if HYBRID_MODE == "cloud" and "openrouter" in target_url:
         fallback_models = [m for m in (
-            "google/gemma-4-31b-it:free",
+            "nvidia/nemotron-3-nano-30b-a3b:free",
             "openai/gpt-oss-20b:free",
-            "inclusionai/ling-3.0-flash:free",
+            "google/gemma-4-26b-a4b-it:free",
         ) if m != cloud_model]
         candidates = [cloud_model] + fallback_models
     else:
         candidates = [target_model]
-    last_err = None
-    for model in candidates:
+
+    def attempt(model):
         body = json.dumps({
             "model": model,
             "stream": False,
@@ -457,20 +458,30 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
             ],
         }).encode()
         req = urllib.request.Request(target_url, data=body, headers=headers, method="POST")
-        for attempt in range(3):
-            try:
-                with urllib.request.urlopen(req, timeout=45) as resp:
-                    data = json.loads(resp.read())
-                    reply = data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
-                    return reply, None
-            except Exception as e:
-                last_err = e
-                retryable = isinstance(e, (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError))
-                status = getattr(e, "code", None)
-                if retryable and (status is None or status >= 500 or status == 429) and attempt < 2:
-                    time.sleep(2 * (attempt + 1))
-                    continue
-                break
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                data = json.loads(resp.read())
+                reply = data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
+                return reply
+        except Exception as e:
+            return e
+
+    last_err = None
+    if len(candidates) > 1:
+        executor = ThreadPoolExecutor(max_workers=len(candidates))
+        futures = [executor.submit(attempt, m) for m in candidates]
+        for fut in as_completed(futures):
+            result = fut.result()
+            if isinstance(result, str):
+                executor.shutdown(wait=False)
+                return result, None
+            last_err = result
+        executor.shutdown(wait=True)
+    else:
+        result = attempt(candidates[0])
+        if isinstance(result, str):
+            return result, None
+        last_err = result
     if HYBRID_MODE == "cloud":
         HYBRID_OFFLINE = True
     try:

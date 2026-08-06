@@ -907,7 +907,7 @@ async function refreshDashboard(){
     const avg=dd.avg_confidence||'N/A',low=dd.consecutive_low||0;
     const top=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].user_id:'\u2014';
     const fshot=dch.total_fewshot||0,esc=dch.total_escalations||0;
-    const mode=dh.mode||'offline';
+    const mode=dh.cloud_mode||dh.mode||'offline';
     const topScore=dlb.leaderboard&&dlb.leaderboard[0]?dlb.leaderboard[0].score:'\u2014';
     const online=dh.has_api_key||mode==='local';
     const weeks=ds.weeks||[],overall=ds.overall||{},trend=ds.trend||'stable';
@@ -1120,8 +1120,21 @@ async function refreshMetrics(){
     $('#metricStatus').textContent=online?'online':'offline';
     $('#metricStatus').style.color=online?'var(--green)':'var(--red)';
     const banner=$('#llmBanner');
-    if(!online&&mode==='cloud'){banner.textContent='\u26A0\uFE0F Cloud AI offline \u2014 using mock replies';banner.className='llm-banner offline'}
-    else{banner.textContent='\u2705 '+(mode==='cloud'?'Cloud AI':'Local AI')+' online';banner.className='llm-banner online'}
+    let cloudOn=false,cloudOffline=false,cloudMode=false;
+    try{
+      const hs=await (await fetch(API+'/hybrid-status')).json();
+      cloudMode=hs.mode==='cloud';
+      cloudOffline=!!hs.offline;
+      cloudOn=cloudMode&&!cloudOffline;
+    }catch(e){}
+    if(!cloudOn){
+      const modeLabel=cloudMode?'Cloud AI':'Local AI';
+      banner.textContent='\u26A0\uFE0F '+modeLabel+' offline \u2014 using mock replies';
+      banner.className='llm-banner offline';
+    }else{
+      banner.textContent='\u2705 Cloud AI online';
+      banner.className='llm-banner online';
+    }
     await refreshLeaderboard('#leaderboardPanel');await refreshLeaderboard('#leaderboardPanelLB')
   }catch(e){}
 }
