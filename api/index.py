@@ -91,6 +91,9 @@ DYNAMIC_BOOST = {"persona": "mentor", "reason": "default"}
 BADGE_HISTORY: list = []
 PREV_BOOST = None
 WEIGHT_HISTORY: list = []
+PREV_AUTO_WEIGHTS: dict = {}
+PREV_OVERLAY_MILESTONES: set = set()
+PREV_OVERLAY_INFLUENCE: dict = {}
 
 ESCAPED_MODEL = re.sub(r'[^a-zA-Z0-9_-]', '_', LLM_MODEL)
 
@@ -110,6 +113,11 @@ class ChatResponse(BaseModel):
     escalation_tier: Optional[int] = None
     emotion: Optional[str] = None
     dynamic_boost: Optional[dict] = None
+    drift_narration: Optional[str] = None
+    dominant_persona: Optional[str] = None
+    detected_sentiment: Optional[str] = None
+    orchestration_story: Optional[str] = None
+    new_badges: Optional[list] = None
 
 
 def score_reply(reply: str) -> int:
@@ -131,6 +139,49 @@ def detect_intent(text: str) -> Optional[str]:
     if any(w in lower for w in ["explain", "what is", "how does", "define", "tell me about"]): return "explain"
     if any(w in lower for w in ["advise", "should i", "what should", "recommend", "suggest"]): return "advise"
     return None
+
+
+SENTIMENT_WEIGHTS = {
+    "sad": {"mentor": 60, "coach": 15, "teacher": 25},
+    "happy": {"mentor": 55, "coach": 30, "teacher": 15},
+    "angry": {"mentor": 30, "coach": 55, "teacher": 15},
+    "anxious": {"mentor": 60, "coach": 10, "teacher": 30},
+    "curious": {"mentor": 25, "coach": 15, "teacher": 60},
+    "neutral": {"mentor": 40, "coach": 30, "teacher": 30},
+}
+SENTIMENT_KEYWORDS = {
+    "sad": ["sad", "unhappy", "depressed", "down", "lonely", "hurt", "cry", "disappointed", "failed", "lost"],
+    "happy": ["happy", "glad", "great", "excited", "wonderful", "amazing", "love", "fantastic", "grateful", "proud"],
+    "angry": ["angry", "frustrated", "annoyed", "furious", "mad", "irritated", "rage", "hate", "terrible"],
+    "anxious": ["anxious", "worried", "nervous", "scared", "fear", "stress", "overwhelmed", "unsure", "panic", "uncertain"],
+    "curious": ["curious", "wonder", "how", "why", "explain", "learn", "understand", "question", "interesting", "tell me"],
+}
+
+
+def detect_sentiment(text: str) -> str:
+    lower = text.lower()
+    scores = {}
+    for sentiment, keywords in SENTIMENT_KEYWORDS.items():
+        scores[sentiment] = sum(lower.count(k) for k in keywords)
+    if not any(scores.values()):
+        return "neutral"
+    return max(scores, key=scores.get)
+
+
+def auto_detect_weights(text: str) -> dict:
+    intent = detect_intent(text)
+    sentiment = detect_sentiment(text)
+    base = dict(SENTIMENT_WEIGHTS.get(sentiment, SENTIMENT_WEIGHTS["neutral"]))
+    if intent == "motivate":
+        base["coach"] = min(100, base.get("coach", 30) + 15)
+        base["mentor"] = min(100, base.get("mentor", 40) + 10)
+    elif intent == "explain":
+        base["teacher"] = min(100, base.get("teacher", 30) + 20)
+    elif intent == "advise":
+        base["mentor"] = min(100, base.get("mentor", 40) + 10)
+        base["coach"] = min(100, base.get("coach", 30) + 10)
+    normalize_weights(base)
+    return base
 
 
 def normalize_weights(w: dict):
@@ -381,6 +432,9 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
     api_key = os.environ.get("LLM_CLOUD_KEY") if HYBRID_MODE == "cloud" else LLM_API_KEY
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+    if "openrouter" in target_url:
+        headers["HTTP-Referer"] = "https://feelyou.vercel.app"
+        headers["X-Title"] = "FeelYou Emotional AI"
     body = json.dumps({
         "model": target_model,
         "stream": False,
@@ -404,12 +458,43 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
 
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest, request: Request):
-    global RECENT_SCORES, CONSECUTIVE_LOW, LAST_REPLY, LAST_PROMPT, LAST_SCORE, WEAK_REPLY_COUNT, ESCALATION_EVENTS
+    global RECENT_SCORES, CONSECUTIVE_LOW, LAST_REPLY, LAST_PROMPT, LAST_SCORE, WEAK_REPLY_COUNT, ESCALATION_EVENTS, PREV_AUTO_WEIGHTS
     user_id = request.headers.get("X-User-Id") or "anonymous"
 
-    weights = req.weights or dict(PERSONA_BALANCE)
+    prev = dict(PREV_AUTO_WEIGHTS) if PREV_AUTO_WEIGHTS else None
+    auto_weights = auto_detect_weights(req.message)
+    weights = auto_weights
+    dominant = max(weights, key=weights.get)
+    sentiment = detect_sentiment(req.message)
+    intent = detect_intent(req.message)
+
+    drift_parts = []
+    if prev:
+        for p in ("mentor", "coach", "teacher"):
+            diff = weights.get(p, 0) - prev.get(p, 0)
+            if diff >= 5:
+                reasons = []
+                if sentiment != "neutral":
+                    reasons.append(f"{sentiment} sentiment detected")
+                if intent:
+                    reasons.append(f"{intent} intent recognized")
+                if diff >= 10:
+                    reasons.append(f"confidence trend {round(sum(RECENT_SCORES[-5:]) / max(len(RECENT_SCORES[-5:]), 1), 1) if RECENT_SCORES else 'stable'}")
+                reasons.append(f"boosted +{diff}")
+                drift_parts.append(f"{p} " + ", ".join(reasons))
+            elif diff <= -5:
+                drift_parts.append(f"{p} decreased by {abs(diff)} as other personas strengthened")
+    if not drift_parts:
+        drift_parts.append(f"Blend held steady with dominant {dominant} at {weights[dominant]}%")
+
+    drift_narration = ". ".join(drift_parts) + "."
+    mode_tag_for_drift = "cloud" if HYBRID_MODE == "cloud" and not HYBRID_OFFLINE else "local"
+    mode_label = "Cloud AI" if mode_tag_for_drift == "cloud" else "Local Ollama"
+    drift_narration += f" Orchestration via {mode_label}."
+    PREV_AUTO_WEIGHTS = dict(weights)
+
     prompt = apply_template(req.message, weights)
-    persona = build_persona(req.persona, weights)
+    persona = build_persona("+".join([f"{p}:{w}" for p, w in weights.items() if w > 0]), weights)
 
     reply, emotion = call_llm(persona, prompt, req.persona)
     score = score_reply(reply)
@@ -472,12 +557,35 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         DYNAMIC_BOOST["changed"] = True
     else:
         DYNAMIC_BOOST["changed"] = False
-    global PREV_BOOST
+
     PREV_BOOST = dict(DYNAMIC_BOOST)
 
     if weights:
         normalize_weights(weights)
     WEIGHT_HISTORY.append({"timestamp": datetime.now().isoformat(), "weights": dict(weights) if weights else {}, "boost": dict(DYNAMIC_BOOST)})
+
+    story_parts = []
+    story_parts.append(f"Sentiment: {sentiment}.")
+    if intent:
+        story_parts.append(f"Intent: {intent}.")
+    story_parts.append(f"Blend -> {dominant} {weights[dominant]}%, mentor {weights.get('mentor',0)}%, coach {weights.get('coach',0)}%, teacher {weights.get('teacher',0)}%.")
+    if DYNAMIC_BOOST.get("changed"):
+        b = DYNAMIC_BOOST
+        mode_label = "cloud-based AI" if b['source'] == "cloud" else "local Ollama model"
+        story_parts.append(f"Boost: {b['persona']} +{b['boost']} ({b['reason']}) via {mode_label}.")
+    story_parts.append(f"Confidence: {score}%.")
+    if escalation_tier:
+        story_parts.append(f"Escalation tier {escalation_tier} triggered.")
+    if CONSECUTIVE_LOW >= 3:
+        story_parts.append(f"{CONSECUTIVE_LOW} consecutive low replies.")
+
+    badge_result = await badge_alerts()
+    new_badges = badge_result.get("alerts", [])
+    if new_badges:
+        badge_parts = [f"{b['user_id']} earned the {b['name']} badge" for b in new_badges]
+        story_parts.append(". ".join(badge_parts) + ".")
+
+    orchestration_story = " ".join(story_parts)
 
     return ChatResponse(
         reply=reply,
@@ -487,6 +595,11 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         escalation_tier=escalation_tier,
         emotion=emotion,
         dynamic_boost=dict(DYNAMIC_BOOST),
+        drift_narration=drift_narration,
+        dominant_persona=dominant,
+        detected_sentiment=sentiment,
+        orchestration_story=orchestration_story,
+        new_badges=new_badges if new_badges else None,
     )
 
 
@@ -503,12 +616,18 @@ async def dashboard_endpoint():
 
 @app.get("/api/health")
 async def health():
+    cloud_key = os.environ.get("LLM_CLOUD_KEY", "")
+    cloud_url = os.environ.get("LLM_CLOUD_URL", "https://api.openai.com/v1/chat/completions")
     return {
         "status": "ok",
         "model": LLM_MODEL,
         "llm_url": LLM_API_URL,
         "has_api_key": bool(LLM_API_KEY),
         "mode": "offline" if "localhost" in LLM_API_URL and not LLM_API_KEY else "configured",
+        "cloud_mode": HYBRID_MODE,
+        "cloud_url": cloud_url,
+        "cloud_model": os.environ.get("LLM_CLOUD_MODEL", "gpt-4o-mini"),
+        "has_cloud_key": bool(cloud_key),
     }
 
 
@@ -1248,8 +1367,64 @@ async def session_replay():
     weight_data = WEIGHT_HISTORY[-50:]
     score_history = RECENT_SCORES[-20:]
     steps = []
+    milestone_map = {}
+    for b in BADGE_HISTORY[-30:]:
+        bt = b.get("timestamp", "")
+        nearest = None
+        nearest_diff = None
+        for i, w in enumerate(weight_data):
+            wt = w.get("timestamp", "")
+            if bt and wt:
+                try:
+                    diff = abs(datetime.fromisoformat(bt) - datetime.fromisoformat(wt)).total_seconds()
+                    if nearest_diff is None or diff < nearest_diff:
+                        nearest_diff = diff
+                        nearest = i
+                except:
+                    pass
+        if nearest is not None and (nearest_diff is None or nearest_diff < 300):
+            if nearest not in milestone_map:
+                milestone_map[nearest] = []
+            milestone_map[nearest].append(b)
+    drift_map = {}
+    for d in PERSONA_DRIFT_LOG[-50:]:
+        if d.get("user_id", "") in ("simulation", "federated"):
+            continue
+        dt = d.get("timestamp", "")
+        nearest = None
+        nearest_diff = None
+        for i, w in enumerate(weight_data):
+            wt = w.get("timestamp", "")
+            if dt and wt:
+                try:
+                    diff = abs(datetime.fromisoformat(dt) - datetime.fromisoformat(wt)).total_seconds()
+                    if nearest_diff is None or diff < nearest_diff:
+                        nearest_diff = diff
+                        nearest = i
+                except:
+                    pass
+        if nearest is not None and (nearest_diff is None or nearest_diff < 300):
+            if nearest not in drift_map:
+                drift_map[nearest] = []
+            action = d.get("action", "")
+            uid = d.get("user_id", "")
+            ws = d.get("weights", {})
+            parts = []
+            if ws:
+                for p in ("mentor", "coach", "teacher"):
+                    v = ws.get(p, 0)
+                    if v:
+                        parts.append(f"{p} {v}%")
+            drift_narration = f"{uid} {action}"
+            if parts:
+                drift_narration += " [" + ", ".join(parts) + "]"
+            drift_map[nearest].append({"user_id": uid, "action": action, "weights": ws, "narration": drift_narration})
     for i, w in enumerate(weight_data):
         step = {"index": i, "weights": w.get("weights", {}), "boost": w.get("boost", {}), "confidence": score_history[i] if i < len(score_history) else None}
+        if i in milestone_map:
+            step["milestone_events"] = milestone_map[i]
+        if i in drift_map:
+            step["drift_events"] = drift_map[i]
         parts = []
         if w.get("boost", {}).get("changed"):
             b = w["boost"]
@@ -1268,6 +1443,85 @@ async def session_replay():
         "badge_history": BADGE_HISTORY[-20:],
         "steps": steps,
     }
+
+
+@app.get("/api/cross-session-archive")
+async def cross_session_archive():
+    if not WEIGHT_HISTORY:
+        return {"sessions": [], "narration": "No session data available.", "emotion": "reflection", "chapters": []}
+
+    session_size = 5
+    weight_chunks = [WEIGHT_HISTORY[i:i + session_size] for i in range(0, len(WEIGHT_HISTORY), session_size)]
+    chunks = max(1, len(weight_chunks))
+    scores = RECENT_SCORES[-50:]
+    badges = BADGE_HISTORY[-30:]
+    drifts = PERSONA_DRIFT_LOG[-50:]
+
+    sessions = []
+    score_idx = 0
+    for ci, chunk in enumerate(weight_chunks):
+        chunk_scores = scores[score_idx:score_idx + len(chunk)] if score_idx < len(scores) else []
+        score_idx += len(chunk)
+        avg_conf = round(sum(chunk_scores) / len(chunk_scores), 1) if chunk_scores else None
+        pw = {}
+        for w in chunk:
+            for p in ("mentor", "coach", "teacher"):
+                v = w.get("weights", {}).get(p, 0)
+                if p not in pw or v > pw[p]:
+                    pw[p] = v
+        boosts = [w.get("boost", {}) for w in chunk if w.get("boost", {}).get("changed")]
+        ts_start = chunk[0].get("timestamp", "")
+        ts_end = chunk[-1].get("timestamp", "")
+        session_badges = [b for b in badges if ts_start <= b.get("timestamp", "") <= ts_end or not ts_start]
+        session_drifts = [e for e in drifts if ts_start <= e.get("timestamp", "") <= ts_end or not ts_start]
+
+        sessions.append({
+            "id": ci + 1,
+            "label": f"Session {ci + 1}",
+            "entry_count": len(chunk),
+            "avg_confidence": avg_conf,
+            "peak_weights": pw,
+            "boosts": boosts,
+            "badges": session_badges[-5:],
+            "badge_count": len(session_badges),
+            "drift_count": len(session_drifts),
+            "timestamp": ts_start,
+            "last_timestamp": ts_end,
+        })
+
+    chapters = []
+    chapter_parts = [f"Cross-session archive covering {len(weight_chunks)} sessions with a total of {len(WEIGHT_HISTORY)} interactions."]
+    confs = [s["avg_confidence"] for s in sessions if s["avg_confidence"] is not None]
+    if len(confs) >= 2:
+        first_avg = confs[0]
+        last_avg = confs[-1]
+        delta = round(last_avg - first_avg, 1)
+        if abs(delta) >= 3:
+            direction = "improved" if delta > 0 else "declined"
+            chapter_parts.append(f"Average confidence {direction} by {abs(delta)} percent from session 1 to session {len(confs)}.")
+        stable = sum(1 for c in confs if c >= 70)
+        chapter_parts.append(f"Of {len(confs)} sessions, {stable} maintained healthy confidence above 70 percent.")
+    sessions_with_growth = []
+    for p in ("mentor", "coach", "teacher"):
+        vals = [s["peak_weights"].get(p, 0) for s in sessions if s["peak_weights"].get(p, 0) > 0]
+        if len(vals) >= 2:
+            growth = vals[-1] - vals[0]
+            if abs(growth) >= 5:
+                direction = "grew" if growth > 0 else "declined"
+                sessions_with_growth.append(f"{p} {direction} by {abs(growth)} points from session 1 to session {len(vals)}")
+    if sessions_with_growth:
+        chapter_parts.append("Persona evolution: " + ". ".join(sessions_with_growth) + ".")
+    total_badges = sum(s["badge_count"] for s in sessions)
+    if total_badges:
+        chapter_parts.append(f"Across all sessions, {total_badges} badges were earned.")
+    total_drifts = sum(s["drift_count"] for s in sessions)
+    if total_drifts:
+        chapter_parts.append(f"A total of {total_drifts} drift events were recorded across {len(sessions)} sessions.")
+
+    chapters = chapter_parts
+    narration = "Cross-session archive. " + " ".join(chapters)
+    emotion = "joy" if confs and confs[-1] >= 70 else "empathy" if confs and confs[-1] < 50 else "reflection"
+    return {"sessions": sessions, "narration": narration, "chapters": chapters, "emotion": emotion, "total_sessions": len(sessions)}
 
 
 @app.get("/api/contributor-legacy")
@@ -1352,6 +1606,201 @@ async def contributor_legacy_narration():
                     sentences.append(f"{top[0]} and {second[0]} have equal {p} peaks at {top[1]}.")
     emotion = "encouragement" if any(u["badge_count"] > 0 for u in users_list) else "reflection"
     return {"narration": narration, "emotion": emotion}
+
+
+@app.get("/api/contributor-legacy/archive")
+async def contributor_legacy_archive():
+    data = await contributor_legacy()
+    if not data.get("legacy"):
+        return {"sessions": [], "narration": "No contributor data for archive.", "emotion": "reflection", "chapters": []}
+
+    session_size = 5
+    weight_chunks = [WEIGHT_HISTORY[i:i + session_size] for i in range(0, len(WEIGHT_HISTORY), session_size)] if WEIGHT_HISTORY else []
+    sessions = []
+    for ci, chunk in enumerate(weight_chunks):
+        ts_start = chunk[0].get("timestamp", "")
+        ts_end = chunk[-1].get("timestamp", "")
+        per_user = []
+        for u in data["legacy"]:
+            uid = u["user_id"]
+            user_drifts = [e for e in PERSONA_DRIFT_LOG if e["user_id"] == uid and (ts_start <= e.get("timestamp", "") <= ts_end or not ts_start)]
+            user_badges = [b for b in BADGE_HISTORY if b.get("user_id") == uid and (ts_start <= b.get("timestamp", "") <= ts_end or not ts_start)]
+            dt = [e for e in u.get("drift_timeline", []) if ts_start <= e.get("timestamp", "") <= ts_end or not ts_start]
+            peaks = {}
+            for e in dt:
+                for p in ("mentor", "coach", "teacher"):
+                    v = e.get("weights", {}).get(p, 0)
+                    if p not in peaks or v > peaks[p]:
+                        peaks[p] = v
+            per_user.append({
+                "user_id": uid,
+                "drift_count": len(user_drifts),
+                "badge_count": len(user_badges),
+                "badges": [b["name"] for b in user_badges],
+                "peak_weights": peaks,
+            })
+        sessions.append({"id": ci + 1, "label": f"Session {ci + 1}", "users": per_user})
+    chapters = []
+    total_badges = sum(u["badge_count"] for u in data["legacy"])
+    total_events = sum(u["total_events"] for u in data["legacy"])
+    chapters.append(f"Contributor legacy archive covering {len(data['legacy'])} contributors across {len(sessions)} sessions with {total_events} events.")
+    if total_badges:
+        chapters.append(f"{total_badges} badges earned in total.")
+    for u in data["legacy"]:
+        dt = u.get("drift_timeline", [])
+        parts = [f"{u['total_events']} events"]
+        if u["badge_count"]:
+            parts.append(f"{u['badge_count']} badges")
+        if u.get("weight_influence"):
+            inf = [f"{p} {v}" for p, v in u["weight_influence"].items() if v > 0]
+            if inf:
+                parts.append("influence: " + ", ".join(inf))
+        chapters.append(f"{u['user_id']}: " + ", ".join(parts) + ".")
+        for p in ("mentor", "coach", "teacher"):
+            vals = [(i, e.get("weights", {}).get(p, 0)) for i, e in enumerate(dt) if e.get("weights", {}).get(p, 0) > 0]
+            if vals:
+                peak = max(vals, key=lambda x: x[1])
+                if peak[1] >= 15:
+                    chapters.append(f"{u['user_id']} {p} peaked at {peak[1]}.")
+    narration = "Contributor legacy archive. " + " ".join(chapters)
+    emotion = "joy" if total_badges > 0 else "reflection"
+    return {"sessions": sessions, "narration": narration, "chapters": chapters, "emotion": emotion, "total_sessions": len(sessions)}
+
+
+@app.get("/api/persona-evolution-chronicle")
+async def persona_evolution_chronicle():
+    if not WEIGHT_HISTORY:
+        return {"milestones": [], "narration": "No persona evolution data available.", "emotion": "reflection", "chapters": []}
+
+    session_size = 5
+    weight_chunks = [WEIGHT_HISTORY[i:i + session_size] for i in range(0, len(WEIGHT_HISTORY), session_size)]
+    cumulative = defaultdict(int)
+    milestones = []
+    thresholds = [10, 20, 30, 40, 50, 75, 100]
+    for ci, chunk in enumerate(weight_chunks):
+        for w in chunk:
+            for p in ("mentor", "coach", "teacher"):
+                v = w.get("weights", {}).get(p, 0)
+                cumulative[p] += v
+        for p in ("mentor", "coach", "teacher"):
+            for t in thresholds:
+                if cumulative[p] >= t and not any(m["persona"] == p and m["threshold"] == t for m in milestones):
+                    milestones.append({"persona": p, "threshold": t, "session": ci + 1, "cumulative": cumulative[p], "label": f"{p} reached {t} cumulative influence after session {ci + 1}"})
+    chapters = []
+    for p in ("mentor", "coach", "teacher"):
+        p_ms = [m for m in milestones if m["persona"] == p]
+        if p_ms:
+            labels = [m["label"] for m in p_ms]
+            chapters.append(". ".join(labels) + ".")
+        else:
+            total = cumulative.get(p, 0)
+            if total > 0:
+                chapters.append(f"{p} at {total} cumulative influence, no milestone yet.")
+    if milestones:
+        chapters.append(f"{len(milestones)} milestones recorded across all personas.")
+    narration = "Persona evolution chronicle. " + " ".join(chapters)
+    emotion = "joy" if len(milestones) >= 3 else "encouragement" if milestones else "reflection"
+    return {"milestones": milestones, "cumulative": dict(cumulative), "narration": narration, "chapters": chapters, "emotion": emotion}
+
+
+@app.get("/api/cross-archive-comparative")
+async def cross_archive_comparative():
+    archive = await cross_session_archive()
+    legacy = await contributor_legacy()
+    evolution = await persona_evolution_chronicle()
+
+    if not archive.get("sessions"):
+        return {"scenes": [], "narration": "No archive data for comparative film.", "emotion": "reflection", "chapters": []}
+
+    archive_sessions = archive["sessions"]
+    milestones = evolution.get("milestones", [])
+    evolution_cum = evolution.get("cumulative", {})
+    legend_users = {u["user_id"]: u for u in legacy.get("legacy", [])}
+
+    scenes = []
+    for s in archive_sessions:
+        sid = s["id"]
+        scene_ms = [m for m in milestones if m["session"] == sid]
+        scene_users = []
+        for uid, u in legend_users.items():
+            scene_users.append({"user_id": uid, "total_events": u.get("total_events", 0), "badge_count": u.get("badge_count", 0)})
+        scenes.append({
+            "scene": sid,
+            "label": s["label"],
+            "peak_weights": s.get("peak_weights", {}),
+            "avg_confidence": s.get("avg_confidence"),
+            "entry_count": s.get("entry_count", 0),
+            "milestones": [{"persona": m["persona"], "threshold": m["threshold"]} for m in scene_ms],
+            "contributors": scene_users[:5],
+            "boost_count": len(s.get("boosts", [])),
+            "drift_count": s.get("drift_count", 0),
+        })
+
+    chapters = []
+    chapters.append(f"Comparative film spanning {len(scenes)} sessions with {sum(1 for m in milestones if m)} milestones.")
+    if evolution_cum:
+        parts = [f"{p}: {round(v)}" for p, v in evolution_cum.items()]
+        chapters.append("Cumulative influence: " + ", ".join(parts) + ".")
+    for sc in scenes:
+        pw = sc["peak_weights"]
+        active = [f"{p}={v}" for p, v in pw.items() if v > 0]
+        ms = [f"{m['persona']} milestone {m['threshold']}" for m in sc["milestones"]]
+        parts = [f"Session {sc['scene']}: {', '.join(active)}"]
+        if ms:
+            parts.append("milestones: " + ", ".join(ms))
+        if sc["boost_count"]:
+            parts.append(f"{sc['boost_count']} boosts")
+        chapters.append(". ".join(parts) + ".")
+
+    narration = "Cross-archive comparative film. " + " ".join(chapters)
+    emotion = "joy" if archive_sessions and archive_sessions[-1].get("avg_confidence", 0) and archive_sessions[-1]["avg_confidence"] >= 70 else "reflection"
+    return {"scenes": scenes, "narration": narration, "chapters": chapters, "emotion": emotion, "cumulative": evolution_cum, "total_scenes": len(scenes)}
+
+
+@app.get("/api/contributor-legacy/overlay")
+async def contributor_legacy_overlay():
+    global PREV_OVERLAY_MILESTONES, PREV_OVERLAY_INFLUENCE
+    legacy = await contributor_legacy()
+    users = legacy.get("legacy", [])
+    overlay = []
+    milestone_users = []
+    new_milestones = []
+    current_influence = {}
+    for u in users[:5]:
+        influence = u.get("weight_influence", {})
+        top_p = max(influence, key=influence.get) if influence else None
+        top_v = influence.get(top_p, 0) if top_p else 0
+        prev = PREV_OVERLAY_INFLUENCE.get(u["user_id"], 0)
+        jump = top_v - prev
+        entry = {
+            "user_id": u["user_id"],
+            "badge_count": u["badge_count"],
+            "total_events": u["total_events"],
+            "top_persona": top_p,
+            "top_influence": round(top_v, 1),
+            "influence": {k: round(v, 1) for k, v in influence.items()},
+            "arc_accel": jump >= 10,
+            "influence_jump": round(jump, 1),
+        }
+        current_influence[u["user_id"]] = top_v
+        thresholds = [10, 20, 30, 40, 50]
+        for t in thresholds:
+            if top_v >= t:
+                key = f"{u['user_id']}_{t}"
+                if key not in PREV_OVERLAY_MILESTONES:
+                    PREV_OVERLAY_MILESTONES.add(key)
+                    new_milestones.append(key)
+                    entry["milestone"] = t
+                    entry["milestone_persona"] = top_p
+                    break
+        overlay.append(entry)
+        if top_v >= 10:
+            milestone_users.append(u["user_id"])
+    PREV_OVERLAY_INFLUENCE = current_influence
+    if not overlay:
+        return {"overlay": [], "narration": "No contributor overlay data."}
+    total_badges = sum(o["badge_count"] for o in overlay)
+    return {"overlay": overlay, "narration": f"{len(overlay)} contributors with {total_badges} badges tracked.", "new_milestones": new_milestones, "milestone_users": milestone_users}
 
 
 @app.get("/api/persona-influence")
@@ -1465,6 +1914,270 @@ async def confidence_health_export():
         media_type="text/plain",
         headers={"Content-Disposition": f'attachment; filename="confidence-health-{now_str[:10]}.txt"'},
     )
+
+
+@app.get("/api/confidence-health/story")
+async def confidence_health_story():
+    data = await confidence_health()
+    if data.get("status") == "insufficient_data":
+        return {"narration": "Not enough confidence data for a health story.", "emotion": "reflection", "chapters": []}
+    chapters = []
+    ov = data.get("overall", {})
+    trend = data.get("trend", "stable")
+    comps = data.get("comparisons", [])
+    overall_delta = data.get("overall_delta")
+    avg = ov.get("avg", 0)
+    spread = ov.get("spread", 0)
+    status = ov.get("status", "unknown")
+    healthy_ratio = ov.get("healthy_ratio", 0) * 100
+    chapters.append(f"Confidence health overview: average {avg} percent, spread {spread}, healthy ratio {healthy_ratio} percent, status is {status}.")
+    if trend == "improving":
+        chapters.append(f"Trend is improving across {len(data.get('sessions', []))} sessions.")
+    elif trend == "declining":
+        chapters.append(f"Trend is declining. Consider reviewing escalation patterns.")
+    else:
+        chapters.append(f"Confidence is stable.")
+    if overall_delta is not None and abs(overall_delta) >= 3:
+        direction = "rose" if overall_delta > 0 else "dropped"
+        chapters.append(f"Compared across all sessions, confidence {direction} by {abs(overall_delta)} percent.")
+    if comps:
+        significant = [c for c in comps if abs(c["avg_delta"]) >= 5]
+        for c in significant[:2]:
+            direction = "improved" if c["avg_delta"] > 0 else "declined"
+            chapters.append(f"From session {c['from_window']} to {c['to_window']}, confidence {direction} by {abs(c['avg_delta'])} percent.")
+    narration = "Health story. " + " ".join(chapters)
+    emotion = "joy" if trend == "improving" else "empathy" if trend == "declining" else "reflection"
+    return {"narration": narration, "emotion": emotion, "chapters": chapters, "data": data}
+
+
+@app.get("/api/confidence-health/longitudinal")
+async def confidence_health_longitudinal():
+    if len(RECENT_SCORES) < 3:
+        return {"status": "insufficient_data", "weeks": [], "narration": "Not enough confidence data for longitudinal analysis.", "emotion": "reflection"}
+    recent = RECENT_SCORES[-50:]
+    week_size = 7
+    weeks = []
+    for i in range(0, len(recent), week_size):
+        chunk = recent[i:i + week_size]
+        if len(chunk) < 3:
+            continue
+        avg = round(sum(chunk) / len(chunk), 1)
+        spread = round(max(chunk) - min(chunk), 1)
+        healthy = sum(1 for s in chunk if s >= 70)
+        healthy_ratio = round(healthy / len(chunk), 2)
+        weeks.append({
+            "week": len(weeks) + 1,
+            "label": f"Week {len(weeks) + 1}",
+            "avg": avg,
+            "spread": spread,
+            "healthy_ratio": healthy_ratio,
+            "count": len(chunk),
+            "status": "stable" if spread <= 10 else "volatile" if spread > 25 else "moderate",
+        })
+    chapters = []
+    if len(weeks) >= 2:
+        first = weeks[0]
+        last = weeks[-1]
+        delta = round(last["avg"] - first["avg"], 1)
+        if abs(delta) >= 3:
+            direction = "improved" if delta > 0 else "declined"
+            chapters.append(f"Longitudinally, confidence {direction} by {abs(delta)} percent from week 1 to week {len(weeks)}.")
+        consecutive_healthy = 0
+        max_consecutive_healthy = 0
+        for w in weeks:
+            if w["avg"] >= 70:
+                consecutive_healthy += 1
+                max_consecutive_healthy = max(max_consecutive_healthy, consecutive_healthy)
+            else:
+                consecutive_healthy = 0
+        if max_consecutive_healthy >= 2:
+            chapters.append(f"Confidence remained above 70 percent for {max_consecutive_healthy} consecutive weeks.")
+        elif max_consecutive_healthy >= 1:
+            chapters.append(f"Confidence reached above 70 percent for at least 1 week.")
+        if last["spread"] <= 10:
+            chapters.append(f"Latest week shows stable confidence with low variance.")
+        elif last["spread"] > 25:
+            chapters.append(f"Latest week shows volatile confidence with high variance.")
+    elif len(weeks) == 1:
+        w = weeks[0]
+        chapters.append(f"Single week analyzed: average {w['avg']} percent, spread {w['spread']}.")
+    total_healthy = sum(1 for w in weeks if w["healthy_ratio"] >= 0.8)
+    if total_healthy:
+        chapters.append(f"Across all weeks, {total_healthy} of {len(weeks)} weeks had healthy confidence above 70 percent.")
+    overall_avg = round(sum(w["avg"] for w in weeks) / len(weeks), 1) if weeks else None
+    narration = "Longitudinal confidence analysis. " + " ".join(chapters)
+    emotion = "joy" if weeks and weeks[-1]["avg"] >= 70 else "empathy" if weeks and weeks[-1]["avg"] < 50 else "reflection"
+    return {"weeks": weeks, "narration": narration, "chapters": chapters, "emotion": emotion, "overall_avg": overall_avg, "week_count": len(weeks)}
+
+
+@app.get("/api/confidence-health/narrative-export")
+async def confidence_health_narrative_export():
+    long_data = await confidence_health_longitudinal()
+    story_data = await confidence_health_story()
+    weeks = long_data.get("weeks", [])
+    story_chapters = story_data.get("chapters", [])
+    long_chapters = long_data.get("chapters", [])
+    overall_avg = long_data.get("overall_avg")
+    emotion = story_data.get("emotion", "reflection")
+    now_str = datetime.utcnow().isoformat()
+
+    lines = [f"youfeel Confidence Health Narrative Report", f"Generated: {now_str}", f"Emotion: {emotion}", ""]
+    lines.append("=" * 50)
+    lines.append("WEEKLY TREND TABLE")
+    lines.append("-" * 50)
+    if weeks:
+        lines.append(f"{'Week':<8} {'Avg':<8} {'Spread':<8} {'Status':<10}")
+        lines.append("-" * 40)
+        for w in weeks:
+            lines.append(f"{w['label']:<8} {w['avg']:<8} {w['spread']:<8} {w['status']:<10}")
+        lines.append(f"{'Overall':<8} {overall_avg or '--':<8}")
+    else:
+        lines.append("No weekly data available.")
+    lines.append("")
+    lines.append("=" * 50)
+    lines.append("LONGITUDINAL ANALYSIS")
+    lines.append("-" * 50)
+    if long_chapters:
+        for i, c in enumerate(long_chapters, 1):
+            lines.append(f"{i}. {c}")
+    else:
+        lines.append(long_data.get("narration", "No analysis."))
+    lines.append("")
+    lines.append("=" * 50)
+    lines.append("HEALTH STORY")
+    lines.append("-" * 50)
+    if story_chapters:
+        for i, c in enumerate(story_chapters, 1):
+            lines.append(f"{i}. {c}")
+    else:
+        lines.append(story_data.get("narration", "No story."))
+    lines.append("")
+    lines.append("=" * 50)
+    lines.append("EMOTIONAL SUMMARY")
+    lines.append("-" * 50)
+    if emotion == "joy":
+        lines.append("Overall confidence is healthy and improving. Positive outlook.")
+    elif emotion == "empathy":
+        lines.append("Confidence is declining or low. Consider reviewing patterns.")
+    else:
+        lines.append("Confidence is stable. Mixed signals present.")
+    lines.append("")
+    full_narration = story_data.get("narration", "") + " " + long_data.get("narration", "")
+    text = "\n".join(lines)
+    return Response(
+        content=text,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="confidence-narrative-{now_str[:10]}.txt"'},
+    )
+
+
+@app.get("/api/confidence-health/dashboard-sync")
+async def confidence_health_dashboard_sync():
+    health = await confidence_health()
+    long_data = await confidence_health_longitudinal()
+    story = await confidence_health_story()
+
+    weeks = long_data.get("weeks", [])
+    overall = health.get("overall", {})
+    comparisons = health.get("comparisons", [])
+    trend = health.get("trend", "stable")
+    overall_delta = health.get("overall_delta")
+
+    chapters = []
+    if overall:
+        avg = overall.get("avg", 0)
+        spread = overall.get("spread", 0)
+        healthy = overall.get("healthy_ratio", 0) * 100
+        chapters.append(f"Current health: average {avg}%, spread {spread}, healthy ratio {healthy}%.")
+    if trend == "improving":
+        chapters.append("Trend is improving.")
+    elif trend == "declining":
+        chapters.append("Trend is declining.")
+    else:
+        chapters.append("Trend is stable.")
+    if overall_delta is not None and abs(overall_delta) >= 3:
+        d = "rose" if overall_delta > 0 else "dropped"
+        chapters.append(f"Overall confidence {d} by {abs(overall_delta)}%.")
+    if weeks:
+        last = weeks[-1]
+        chapters.append(f"Latest week: {last['label']} avg {last['avg']}%, status {last['status']}.")
+        healthy_weeks = sum(1 for w in weeks if w["avg"] >= 70)
+        chapters.append(f"{healthy_weeks} of {len(weeks)} weeks healthy.")
+    mixed_chapters = story.get("chapters", [])
+    if mixed_chapters and len(mixed_chapters) > 1:
+        chapters.extend(mixed_chapters[1:3])
+
+    narration = "Dashboard sync. " + " ".join(chapters)
+    emotion = "joy" if trend == "improving" else "empathy" if trend == "declining" else "reflection"
+    return {
+        "overall": overall,
+        "weeks": weeks,
+        "comparisons": comparisons[:3],
+        "overall_delta": overall_delta,
+        "trend": trend,
+        "chapters": chapters,
+        "narration": narration,
+        "emotion": emotion,
+        "week_count": long_data.get("week_count", 0),
+        "overall_avg": long_data.get("overall_avg"),
+    }
+
+
+@app.get("/api/unified-archive-export")
+async def unified_archive_export():
+    replay = await session_replay()
+    legacy = await contributor_legacy()
+    evolution = await persona_evolution_chronicle()
+    archive = await cross_session_archive()
+    long_data = await confidence_health_longitudinal()
+    story = await orchestration_story()
+
+    sections = []
+    sections.append({
+        "id": "replay", "label": "Session Replay",
+        "entries": replay.get("steps", [])[:15],
+        "score_history": replay.get("score_history", []),
+        "badge_history": replay.get("badge_history", []),
+        "summary": f"{len(replay.get('steps',[]))} replay steps, {len(replay.get('score_history',[]))} scores, {len(replay.get('badge_history',[]))} badges",
+    })
+    sections.append({
+        "id": "contributors", "label": "Contributors",
+        "entries": [{"user_id": u["user_id"], "events": u["total_events"], "badges": u["badge_count"], "influence": u.get("weight_influence", {})} for u in legacy.get("legacy", [])],
+        "summary": f"{len(legacy.get('legacy',[]))} contributors tracked",
+    })
+    sections.append({
+        "id": "personas", "label": "Persona Evolution",
+        "milestones": evolution.get("milestones", []),
+        "cumulative": evolution.get("cumulative", {}),
+        "summary": f"{len(evolution.get('milestones',[]))} milestones, cumulative influence: {dict(evolution.get('cumulative',{}))}",
+    })
+    sections.append({
+        "id": "sessions", "label": "Session Archive",
+        "entries": [{"id": s["id"], "confidence": s.get("avg_confidence"), "boosts": s.get("boost_count", 0), "drifts": s.get("drift_count", 0), "peak_weights": s.get("peak_weights", {})} for s in archive.get("sessions", [])],
+        "summary": f"{len(archive.get('sessions',[]))} sessions archived",
+    })
+    sections.append({
+        "id": "confidence", "label": "Confidence Health",
+        "weeks": long_data.get("weeks", []),
+        "overall_avg": long_data.get("overall_avg"),
+        "summary": f"{long_data.get('week_count',0)} weeks, overall avg {long_data.get('overall_avg','--')}%",
+    })
+
+    chapters = []
+    chapters.append(f"Unified archive with {len(sections)} sections.")
+    for sec in sections:
+        chapters.append(f"{sec['label']}: {sec['summary']}.")
+    if evolution.get("cumulative"):
+        cum = evolution["cumulative"]
+        parts = [f"{p} {round(v)}" for p, v in cum.items()]
+        chapters.append("Persona totals: " + ", ".join(parts) + ".")
+    if long_data.get("weeks"):
+        weeks = long_data["weeks"]
+        healthy = sum(1 for w in weeks if w["avg"] >= 70)
+        chapters.append(f"Confidence healthy in {healthy} of {len(weeks)} weeks.")
+    narration = "Unified archive. " + " ".join(chapters)
+    emotion = story.get("emotion", "reflection")
+    return {"sections": sections, "narration": narration, "chapters": chapters, "emotion": emotion, "section_count": len(sections)}
 
 
 @app.get("/api/session-replay/export")
