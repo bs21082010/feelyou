@@ -1,7 +1,9 @@
 import os
 import json
+import time
 import hashlib
 import urllib.request
+import urllib.error
 import urllib.parse
 import re
 from datetime import datetime, timedelta
@@ -433,27 +435,50 @@ def call_llm(system_prompt: str, user_message: str, persona_name: str = "mentor"
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if "openrouter" in target_url:
-        headers["HTTP-Referer"] = "https://feelyou.vercel.app"
+        headers["HTTP-Referer"] = "https://youfeel.vercel.app"
         headers["X-Title"] = "FeelYou Emotional AI"
-    body = json.dumps({
-        "model": target_model,
-        "stream": False,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-    }).encode()
-    req = urllib.request.Request(target_url, data=body, headers=headers, method="POST")
+    if HYBRID_MODE == "cloud" and "openrouter" in target_url:
+        fallback_models = [m for m in (
+            "google/gemma-4-31b-it:free",
+            "openai/gpt-oss-20b:free",
+            "inclusionai/ling-3.0-flash:free",
+        ) if m != cloud_model]
+        candidates = [cloud_model] + fallback_models
+    else:
+        candidates = [target_model]
+    last_err = None
+    for model in candidates:
+        body = json.dumps({
+            "model": model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+        }).encode()
+        req = urllib.request.Request(target_url, data=body, headers=headers, method="POST")
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=45) as resp:
+                    data = json.loads(resp.read())
+                    reply = data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
+                    return reply, None
+            except Exception as e:
+                last_err = e
+                retryable = isinstance(e, (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError))
+                status = getattr(e, "code", None)
+                if retryable and (status is None or status >= 500 or status == 429) and attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                break
+    if HYBRID_MODE == "cloud":
+        HYBRID_OFFLINE = True
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-            reply = data.get("message", {}).get("content", "") or data.get("choices", [{}])[0].get("message", {}).get("content", "") or FALLBACK
-            return reply, None
-    except Exception as e:
-        if HYBRID_MODE == "cloud":
-            HYBRID_OFFLINE = True
-        mock, emotion = generate_mock_reply(user_message, persona_name)
-        return mock, emotion
+        print(f"[LLM ERROR] {type(last_err).__name__}: {last_err} | url={target_url} | model={target_model}", flush=True)
+    except Exception:
+        pass
+    mock, emotion = generate_mock_reply(user_message, persona_name)
+    return mock, emotion
 
 
 @app.post("/api/chat")
